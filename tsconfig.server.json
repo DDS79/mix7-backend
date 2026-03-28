@@ -1,0 +1,32 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "paths": {},
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": [
+    "./server.ts",
+    "./next_server_compat.ts",
+    "./health_route.ts",
+    "./http_runtime.ts",
+    "./http_session_middleware.ts",
+    "./session_issue_route.ts",
+    "./debug_session_context_route.ts",
+    "./payment_intent_route.ts",
+    "./payment_confirm_route.ts",
+    "./payment_runtime_store.ts",
+    "./payment_http_api.ts",
+    "./payment_intent.ts",
+    "./payment_confirm.ts",
+    "./product_domain_anchors.ts",
+    "./product_actor_auth_profile.ts",
+    "./product_auth_session_identity_trust.ts",
+    "./test_stubs/*.ts"
+  ],
+  "exclude": [
+    "./*.test.ts"
+  ]
+}

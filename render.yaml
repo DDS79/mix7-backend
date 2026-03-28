@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: mix7-backend-api
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /health

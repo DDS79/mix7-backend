@@ -1,0 +1,36 @@
+module.exports = {
+  testEnvironment: 'node',
+  rootDir: __dirname,
+  transform: {
+    '^.+\\.ts$': [
+      'ts-jest',
+      {
+        diagnostics: false,
+      },
+    ],
+  },
+  testMatch: [
+    '<rootDir>/payment_intent.test.ts',
+    '<rootDir>/payment_intent_route.test.ts',
+    '<rootDir>/payment_confirm.test.ts',
+    '<rootDir>/payment_confirm_route.test.ts',
+    '<rootDir>/payment_operations.test.ts',
+    '<rootDir>/product_domain_anchors.test.ts',
+    '<rootDir>/product_actor_auth_profile.test.ts',
+    '<rootDir>/product_auth_session_identity_trust.test.ts',
+    '<rootDir>/http_runtime.test.ts',
+    '<rootDir>/server.test.ts',
+    '<rootDir>/session_issue_route.test.ts',
+    '<rootDir>/debug_session_context_route.test.ts',
+  ],
+  moduleNameMapper: {
+    '^@/modules/checkout/payment_intent$': '<rootDir>/payment_intent.ts',
+    '^@/modules/checkout/payment_confirm$': '<rootDir>/payment_confirm.ts',
+    '^next/server$': '<rootDir>/test_stubs/next-server.ts',
+    '^drizzle-orm$': '<rootDir>/test_stubs/drizzle-orm.ts',
+    '^@/db/client$': '<rootDir>/test_stubs/db-client.ts',
+    '^@/db/schema$': '<rootDir>/test_stubs/db-schema.ts',
+    '^@/modules/common/idempotency$': '<rootDir>/test_stubs/idempotency.ts',
+  },
+  moduleFileExtensions: ['ts', 'js', 'json'],
+};

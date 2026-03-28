@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "drizzle-orm": [
+        "./test_stubs/drizzle-orm.ts"
+      ],
+      "@/modules/checkout/payment_intent": [
+        "./payment_intent.ts"
+      ],
+      "@/modules/checkout/payment_confirm": [
+        "./payment_confirm.ts"
+      ],
+      "@/db/client": [
+        "./test_stubs/db-client.ts"
+      ],
+      "@/db/schema": [
+        "./test_stubs/db-schema.ts"
+      ],
+      "@/modules/common/idempotency": [
+        "./test_stubs/idempotency.ts"
+      ]
+    }
+  },
+  "include": [
+    "./*.ts",
+    "./test_stubs/*.ts"
+  ]
+}
