@@ -19,6 +19,7 @@ module.exports = {
     '<rootDir>/product_actor_auth_profile.test.ts',
     '<rootDir>/product_auth_session_identity_trust.test.ts',
     '<rootDir>/http_runtime.test.ts',
+    '<rootDir>/checkout_order_route.test.ts',
     '<rootDir>/server.test.ts',
     '<rootDir>/session_issue_route.test.ts',
     '<rootDir>/debug_session_context_route.test.ts',

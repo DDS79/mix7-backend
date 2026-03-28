@@ -6,6 +6,7 @@ const http = require('node:http');
 
 import { GET as getHealth } from './health_route';
 import { GET as getDebugSessionContext } from './debug_session_context_route';
+import { POST as postCheckoutOrder } from './checkout_order_route';
 import { POST as postPaymentConfirm } from './payment_confirm_route';
 import { POST as postPaymentIntent } from './payment_intent_route';
 import { POST as postSessionIssue } from './session_issue_route';
@@ -48,6 +49,9 @@ function routeRequest(method: string, pathname: string): RouteHandler | null {
   }
   if (method === 'POST' && pathname === '/session/issue') {
     return postSessionIssue;
+  }
+  if (method === 'POST' && pathname === '/checkout/orders') {
+    return postCheckoutOrder;
   }
   if (method === 'GET' && pathname === '/debug/session-context') {
     return getDebugSessionContext;

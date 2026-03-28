@@ -23,6 +23,25 @@ type RuntimeOrder = {
   paymentProvider: string | null;
 };
 
+export type CreateRuntimeOrderInput = {
+  id: string;
+  buyerId: string;
+  eventId: string;
+  totalMinor: number;
+};
+
+export class CheckoutOrderSourceError extends Error {
+  readonly code: string;
+  readonly status: number;
+
+  constructor(code: string, message: string, status: number) {
+    super(message);
+    this.name = 'CheckoutOrderSourceError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
 type RuntimeIdempotencyEntry<T> = {
   requestHash: string;
   response: T | null;
@@ -43,6 +62,29 @@ export function resetPaymentRuntimeStore() {
 }
 
 export function seedRuntimeOrder(order: RuntimeOrder) {
+  orders.set(order.id, order);
+  return order;
+}
+
+export function createRuntimeOrder(input: CreateRuntimeOrderInput): RuntimeOrder {
+  const existing = orders.get(input.id);
+  if (existing) {
+    throw new CheckoutOrderSourceError(
+      'ORDER_ALREADY_EXISTS',
+      'Order already exists.',
+      409,
+    );
+  }
+
+  const order: RuntimeOrder = {
+    id: input.id,
+    buyerId: input.buyerId,
+    eventId: input.eventId,
+    totalMinor: input.totalMinor,
+    status: 'pending_payment',
+    paymentProvider: null,
+  };
+
   orders.set(order.id, order);
   return order;
 }

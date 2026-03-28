@@ -66,15 +66,6 @@ describe('HTTP web service packaging', () => {
     const buyerId = '33333333-3333-4333-8333-333333333333';
     const orderId = '44444444-4444-4444-8444-444444444444';
 
-    seedRuntimeOrder({
-      id: orderId,
-      buyerId,
-      eventId: '11111111-1111-4111-8111-111111111111',
-      totalMinor: 3000,
-      status: 'pending_payment',
-      paymentProvider: 'stub',
-    });
-
     const sessionResponse = await handleApiRequest(new Request('http://render.local/session/issue', {
       method: 'POST',
       headers: {
@@ -89,6 +80,20 @@ describe('HTTP web service packaging', () => {
       }),
     }));
     const sessionJson = await sessionResponse.json();
+
+    const orderResponse = await handleApiRequest(new Request('http://render.local/checkout/orders', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-session-id': sessionJson.data.sessionId,
+      },
+      body: JSON.stringify({
+        orderId,
+        eventId: '11111111-1111-4111-8111-111111111111',
+        totalMinor: 3000,
+      }),
+    }));
+    const orderJson = await orderResponse.json();
 
     const intentResponse = await handleApiRequest(new Request('http://render.local/checkout/payment-intent', {
       method: 'POST',
@@ -122,6 +127,8 @@ describe('HTTP web service packaging', () => {
     }));
     const confirmJson = await confirmResponse.json();
 
+    expect(orderResponse.status).toBe(201);
+    expect(orderJson.data.buyerId).toBe(buyerId);
     expect(intentResponse.status).toBe(201);
     expect(confirmResponse.status).toBe(202);
     expect(intentJson.data.buyer_id).toBe(buyerId);

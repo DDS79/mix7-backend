@@ -13,6 +13,7 @@
     "./health_route.ts",
     "./http_runtime.ts",
     "./http_session_middleware.ts",
+    "./checkout_order_route.ts",
     "./session_issue_route.ts",
     "./debug_session_context_route.ts",
     "./payment_intent_route.ts",
