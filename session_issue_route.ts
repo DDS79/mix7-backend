@@ -31,12 +31,28 @@ function errorResponse(status: number, code: string, message: string) {
   );
 }
 
+function validationErrorResponse(error: z.ZodError) {
+  return NextResponse.json(
+    {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed.',
+        details: error.issues.map((issue) => ({
+          field: issue.path.join('.') || 'body',
+          message: issue.message,
+        })),
+      },
+    },
+    { status: 400 },
+  );
+}
+
 export async function POST(request: Request) {
   const rawBody = await request.json().catch(() => ({}));
   const parsed = requestSchema.safeParse(rawBody);
 
   if (!parsed.success) {
-    return errorResponse(400, 'INVALID_REQUEST', 'Invalid request');
+    return validationErrorResponse(parsed.error);
   }
 
   try {

@@ -167,7 +167,15 @@ describe('POST /api/v1/checkout/orders/payment-confirm', () => {
     const json = await response.json();
 
     expect(response.status).toBe(400);
-    expect(json.error.code).toBe('INVALID_REQUEST');
+    expect(json.error.code).toBe('VALIDATION_ERROR');
+    expect(json.error.message).toBe('Request validation failed.');
+    expect(json.error.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: 'orderId',
+        }),
+      ]),
+    );
     expect(mockConfirmPayment).not.toHaveBeenCalled();
   });
 

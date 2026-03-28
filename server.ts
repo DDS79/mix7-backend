@@ -83,6 +83,21 @@ function applyCors(response: Response, origin: string | null) {
   });
 }
 
+function requestExecutionErrorResponse(origin: string | null, error: unknown) {
+  return applyCors(
+    Response.json(
+      {
+        error: {
+          code: 'REQUEST_EXECUTION_FAILED',
+          message: error instanceof Error ? error.message : 'Unexpected request execution error.',
+        },
+      },
+      { status: 500 },
+    ),
+    origin,
+  );
+}
+
 export async function handleApiRequest(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const origin = request.headers.get('origin');
@@ -139,18 +154,7 @@ export function createHttpService() {
       const responseBody = Buffer.from(await response.arrayBuffer());
       res.end(responseBody);
     } catch (error) {
-      const response = applyCors(
-        Response.json(
-          {
-            error: {
-              code: 'APP_BOOT_FAILURE',
-              message: error instanceof Error ? error.message : 'Unexpected server error.',
-            },
-          },
-          { status: 500 },
-        ),
-        origin,
-      );
+      const response = requestExecutionErrorResponse(origin, error);
       res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
       const responseBody = Buffer.from(await response.arrayBuffer());
       res.end(responseBody);
@@ -160,17 +164,35 @@ export function createHttpService() {
 
 export async function startHttpService(port = Number(process.env.PORT ?? '3000')) {
   const server = createHttpService();
-  await new Promise<void>((resolve) => {
-    server.listen(port, '0.0.0.0', () => resolve());
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, '0.0.0.0', () => {
+      server.off('error', reject);
+      resolve();
+    });
   });
   return server;
 }
 
 if (require.main === module) {
-  startHttpService().then((server) => {
-    const address = server.address();
-    const port =
-      address && typeof address === 'object' && 'port' in address ? address.port : process.env.PORT;
-    console.log(`mix7-backend-api listening on ${port}`);
-  });
+  startHttpService()
+    .then((server) => {
+      const address = server.address();
+      const port =
+        address && typeof address === 'object' && 'port' in address
+          ? address.port
+          : process.env.PORT;
+      console.log(`mix7-backend-api listening on ${port}`);
+    })
+    .catch((error) => {
+      console.error(
+        JSON.stringify({
+          error: {
+            code: 'APP_BOOT_FAILURE',
+            message: error instanceof Error ? error.message : 'HTTP service failed to start.',
+          },
+        }),
+      );
+      process.exitCode = 1;
+    });
 }

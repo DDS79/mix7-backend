@@ -30,6 +30,22 @@ function errorResponse(status: number, code: string, message: string) {
   );
 }
 
+function validationErrorResponse(error: z.ZodError) {
+  return NextResponse.json(
+    {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed.',
+        details: error.issues.map((issue) => ({
+          field: issue.path.join('.') || 'body',
+          message: issue.message,
+        })),
+      },
+    },
+    { status: 400 },
+  );
+}
+
 function readIdempotencyKeyHeader(request: Request): string | undefined {
   const value = request.headers.get(IDEMPOTENCY_KEY_HEADER)?.trim();
 
@@ -54,7 +70,7 @@ export async function POST(request: Request) {
     const parsed = requestSchema.safeParse(rawBody);
 
     if (!parsed.success) {
-      return errorResponse(400, 'INVALID_REQUEST', 'Invalid request');
+      return validationErrorResponse(parsed.error);
     }
 
     const headerIdempotencyKey = readIdempotencyKeyHeader(request);

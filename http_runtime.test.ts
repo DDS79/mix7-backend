@@ -129,4 +129,32 @@ describe('http runtime execution boundary', () => {
     expect(resolved.trust.level).toBe('verified');
     expect(resolved.actor.id).toBe(guest.actor.id);
   });
+
+  it('maps inactive actors to deterministic policy errors', async () => {
+    const issued = await issueRuntimeSession({
+      buyerRef: 'buyer-http-5',
+      authType: 'email',
+      authStatus: 'active',
+      loginRef: 'buyer-http-5@example.com',
+      trustLevel: 'active',
+      sessionType: 'authenticated',
+    });
+
+    const first = await resolveHttpRuntimeContext({
+      request: buildRequest(issued.session.id),
+      action: 'account_profile_update',
+    });
+
+    first.actor.status = 'suspended';
+
+    await expect(
+      resolveHttpRuntimeContext({
+        request: buildRequest(issued.session.id),
+        action: 'account_profile_update',
+      }),
+    ).rejects.toMatchObject({
+      code: 'POLICY_FORBIDDEN',
+      status: 403,
+    });
+  });
 });

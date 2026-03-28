@@ -163,6 +163,9 @@ function mapRuntimeError(error: unknown): HttpRuntimeError {
     if (code === 'ACTOR_NOT_FOUND') {
       return new HttpRuntimeError('ACTOR_NOT_FOUND', error.message, 404);
     }
+    if (code === 'ACTOR_INACTIVE') {
+      return new HttpRuntimeError('POLICY_FORBIDDEN', error.message, 403);
+    }
     if (code === 'IDENTITY_TRUST_INSUFFICIENT') {
       return new HttpRuntimeError('TRUST_INSUFFICIENT', error.message, 403);
     }

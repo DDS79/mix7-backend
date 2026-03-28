@@ -90,4 +90,26 @@ describe('POST /session/issue', () => {
     expect(json.data.sessionId).toBe('sess_123');
     expect(json.data.actorId).toBe('act_123');
   });
+
+  it('returns deterministic validation details for invalid input', async () => {
+    const response = await POST(
+      buildRequest({
+        authType: 'anonymous',
+        authStatus: 'provisional',
+      }),
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(json.error.code).toBe('VALIDATION_ERROR');
+    expect(json.error.message).toBe('Request validation failed.');
+    expect(json.error.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: 'buyerRef',
+        }),
+      ]),
+    );
+    expect(mockIssueRuntimeSession).not.toHaveBeenCalled();
+  });
 });
