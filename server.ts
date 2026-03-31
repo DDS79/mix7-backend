@@ -7,9 +7,12 @@ const http = require('node:http');
 import { GET as getHealth } from './health_route';
 import { GET as getDebugSessionContext } from './debug_session_context_route';
 import { POST as postCheckoutOrder } from './checkout_order_route';
+import { GET as getEvents, GET_BY_SLUG as getEventBySlug } from './events_route';
 import { POST as postPaymentConfirm } from './payment_confirm_route';
 import { POST as postPaymentIntent } from './payment_intent_route';
+import { POST as postRegistrations } from './registrations_route';
 import { POST as postSessionIssue } from './session_issue_route';
+import { GET_BY_ID as getTicketById } from './tickets_route';
 
 export const ALLOWED_CORS_ORIGINS = new Set([
   'https://mix7.ru',
@@ -50,6 +53,12 @@ function routeRequest(method: string, pathname: string): RouteHandler | null {
   if (method === 'POST' && pathname === '/session/issue') {
     return postSessionIssue;
   }
+  if (method === 'GET' && pathname === '/events') {
+    return getEvents;
+  }
+  if (method === 'POST' && pathname === '/registrations') {
+    return postRegistrations;
+  }
   if (method === 'POST' && pathname === '/checkout/orders') {
     return postCheckoutOrder;
   }
@@ -69,6 +78,18 @@ function routeRequest(method: string, pathname: string): RouteHandler | null {
       pathname === '/api/v1/checkout/orders/payment-confirm')
   ) {
     return postPaymentConfirm;
+  }
+  if (method === 'GET' && pathname.startsWith('/events/')) {
+    const slug = pathname.slice('/events/'.length).trim();
+    if (slug) {
+      return async (request) => getEventBySlug(request, slug);
+    }
+  }
+  if (method === 'GET' && pathname.startsWith('/tickets/')) {
+    const ticketId = pathname.slice('/tickets/'.length).trim();
+    if (ticketId) {
+      return async (request) => getTicketById(request, ticketId);
+    }
   }
 
   return null;
