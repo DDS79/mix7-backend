@@ -7,9 +7,17 @@ import {
   initiatePaymentIntent,
 } from './payment_http_api';
 
+const ORDER_ID_FORMAT = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|ord_[a-z0-9]{24})$/i;
+
 const requestSchema = z.object({
   buyerId: z.string().uuid().optional(),
-  orderId: z.string().uuid(),
+  orderId: z
+    .string()
+    .trim()
+    .regex(
+      ORDER_ID_FORMAT,
+      'orderId must be a UUID or event checkout order id (ord_<24 chars>)',
+    ),
   amount: z.coerce.number().positive('amount must be a positive number'),
   currency: z
     .string()

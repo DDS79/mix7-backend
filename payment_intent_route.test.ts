@@ -26,6 +26,7 @@ const mockRuntimeErrorResponse = runtime.runtimeErrorResponse as jest.MockedFunc
 
 const VALID_BUYER_ID = '33333333-3333-4333-8333-333333333333';
 const VALID_ORDER_ID = '44444444-4444-4444-8444-444444444444';
+const VALID_EVENT_ORDER_ID = 'ord_258dbb7b1e4fb43995aefb0c';
 const VALID_IDEMPOTENCY_KEY = 'pay-intent-12345678';
 
 function buildRequest(
@@ -166,12 +167,92 @@ describe('POST /api/v1/checkout/orders/payment-intent', () => {
     });
   });
 
+  it('accepts a registration-issued event checkout order id', async () => {
+    mockInitiatePaymentIntent.mockResolvedValue({
+      success: true,
+      order_id: VALID_EVENT_ORDER_ID,
+      buyer_id: VALID_BUYER_ID,
+      event_id: 'evt_1f660cdf31de258568b11002',
+      total_minor: 2500,
+      status: 'pending_payment',
+      payment_intent: {
+        provider: 'stub',
+        status: 'requires_action',
+        intent_id: 'pi_evt_123',
+        provider_payment_id: 'pp_evt_123',
+        next_step: 'payment_confirm',
+        expires_at: '2026-01-01T00:15:00.000Z',
+        handoff: {
+          kind: 'redirect_token',
+          token: 'ptok_evt_123',
+          redirect_path: '/checkout/pay/pi_evt_123',
+        },
+      },
+    });
+
+    const request = buildRequest(
+      {
+        buyerId: VALID_BUYER_ID,
+        orderId: VALID_EVENT_ORDER_ID,
+        amount: 2500,
+        currency: 'rub',
+        paymentMethod: 'card',
+      },
+      {
+        'Idempotency-Key': VALID_IDEMPOTENCY_KEY,
+        'x-session-id': 'sess_123',
+      },
+    );
+
+    const response = await POST(request);
+    const json = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(json.data.order_id).toBe(VALID_EVENT_ORDER_ID);
+    expect(mockInitiatePaymentIntent).toHaveBeenCalledWith({
+      buyerId: VALID_BUYER_ID,
+      orderId: VALID_EVENT_ORDER_ID,
+      amount: 2500,
+      currency: 'RUB',
+      paymentMethod: 'card',
+      provider: undefined,
+      idempotencyKey: VALID_IDEMPOTENCY_KEY,
+    });
+  });
+
   it('returns 400 for a missing required order field', async () => {
     const request = buildRequest({
       amount: 3000,
       currency: 'USD',
       paymentMethod: 'card',
     });
+
+    const response = await POST(request);
+    const json = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(json.error.code).toBe('VALIDATION_ERROR');
+    expect(json.error.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: 'orderId' }),
+      ]),
+    );
+    expect(mockInitiatePaymentIntent).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for an invalid non-order identifier', async () => {
+    const request = buildRequest(
+      {
+        orderId: 'ord_not-valid',
+        amount: 3000,
+        currency: 'USD',
+        paymentMethod: 'card',
+      },
+      {
+        'Idempotency-Key': VALID_IDEMPOTENCY_KEY,
+        'x-session-id': 'sess_123',
+      },
+    );
 
     const response = await POST(request);
     const json = await response.json();

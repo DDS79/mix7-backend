@@ -63,7 +63,35 @@ describe('tickets route', () => {
     expect(response.status).toBe(200);
     expect(json.data.id).toBe(registration.data.ticket.ticketId);
     expect(json.data.event.slug).toBe('open-studio-day');
+    expect(json.data.accessCode).toMatch(/^[A-HJ-NP-Z2-9]{8}$/);
     expect(json.data.qrPayload).toMatch(/^mix7:ticket:/);
+  });
+
+  it('returns a stable access code for the same ticket', async () => {
+    const session = await issueSession('77777777-7777-4777-8777-777777777777');
+    const registration = await createFreeRegistration(session.data.sessionId);
+
+    const first = await handleApiRequest(
+      new Request(`http://render.local/tickets/${registration.data.ticket.ticketId}`, {
+        headers: {
+          'x-session-id': session.data.sessionId,
+        },
+      }),
+    );
+    const second = await handleApiRequest(
+      new Request(`http://render.local/tickets/${registration.data.ticket.ticketId}`, {
+        headers: {
+          'x-session-id': session.data.sessionId,
+        },
+      }),
+    );
+
+    const firstJson = await first.json();
+    const secondJson = await second.json();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(firstJson.data.accessCode).toBe(secondJson.data.accessCode);
   });
 
   it('rejects ticket access for a different actor', async () => {

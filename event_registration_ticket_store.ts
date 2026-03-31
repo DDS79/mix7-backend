@@ -24,6 +24,7 @@ export type RegistrationRecord = Registration & {
 };
 
 export type TicketRecord = Ticket & {
+  accessCode: string;
   barcodeRef: string | null;
   qrPayload: string | null;
 };
@@ -161,6 +162,31 @@ function buildOrderId(registrationId: string) {
 
 function buildTicketId(registrationId: string) {
   return `tkt_${hashRequest({ registrationId, kind: 'event_ticket' }).slice(0, 24)}`;
+}
+
+const ACCESS_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const ACCESS_CODE_LENGTH = 8;
+
+function buildTicketAccessCode(args: {
+  actorId: string;
+  eventId: string;
+  registrationId: string;
+}) {
+  const seed = hashRequest({
+    actorId: args.actorId,
+    eventId: args.eventId,
+    registrationId: args.registrationId,
+    kind: 'event_access_code',
+  });
+
+  let code = '';
+  for (let index = 0; index < ACCESS_CODE_LENGTH; index += 1) {
+    const chunk = seed.slice(index * 2, index * 2 + 2);
+    const value = Number.parseInt(chunk, 16);
+    code += ACCESS_CODE_ALPHABET[value % ACCESS_CODE_ALPHABET.length];
+  }
+
+  return code;
 }
 
 function buildTicketBarcodeRef(ticketId: string) {
@@ -315,6 +341,11 @@ export function createEventRegistration(args: {
       accessClass: 'general',
       validFrom: event.startsAt,
       validTo: event.endsAt,
+      accessCode: buildTicketAccessCode({
+        actorId: args.actorId,
+        eventId: event.id,
+        registrationId: registration.id,
+      }),
       barcodeRef: buildTicketBarcodeRef(ticketId),
       qrPayload: buildTicketQrPayload(ticketId),
     };
@@ -398,6 +429,7 @@ export function getOwnedTicket(args: {
     accessClass: ticket.accessClass,
     validFrom: ticket.validFrom,
     validTo: ticket.validTo,
+    accessCode: ticket.accessCode,
     barcodeRef: ticket.barcodeRef,
     qrPayload: ticket.qrPayload,
     event: {
