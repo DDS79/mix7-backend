@@ -24,6 +24,7 @@ module.exports = {
     '<rootDir>/http_runtime.test.ts',
     '<rootDir>/checkout_order_route.test.ts',
     '<rootDir>/server.test.ts',
+    '<rootDir>/backend_runtime_config.test.ts',
     '<rootDir>/session_issue_route.test.ts',
     '<rootDir>/debug_session_context_route.test.ts',
   ],

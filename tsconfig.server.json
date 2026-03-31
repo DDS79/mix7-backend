@@ -16,6 +16,7 @@
     "./checkout_order_route.ts",
     "./session_issue_route.ts",
     "./debug_session_context_route.ts",
+    "./backend_runtime_config.ts",
     "./events_route.ts",
     "./registrations_route.ts",
     "./tickets_route.ts",

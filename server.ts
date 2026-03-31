@@ -4,6 +4,7 @@ declare const process: any;
 
 const http = require('node:http');
 
+import { BACKEND_RUNTIME_CONFIG } from './backend_runtime_config';
 import { GET as getHealth } from './health_route';
 import { GET as getDebugSessionContext } from './debug_session_context_route';
 import { POST as postCheckoutOrder } from './checkout_order_route';
@@ -14,10 +15,7 @@ import { POST as postRegistrations } from './registrations_route';
 import { POST as postSessionIssue } from './session_issue_route';
 import { GET_BY_ID as getTicketById } from './tickets_route';
 
-export const ALLOWED_CORS_ORIGINS = new Set([
-  'https://mix7.ru',
-  'https://www.mix7.ru',
-]);
+export const ALLOWED_CORS_ORIGINS = new Set(BACKEND_RUNTIME_CONFIG.allowedWebOrigins);
 
 type RouteHandler = (request: Request) => Promise<Response>;
 
