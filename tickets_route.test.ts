@@ -1,7 +1,10 @@
+import {
+  buildTicketAccessCode,
+  resetEventRegistrationTicketStore,
+} from './event_registration_ticket_store';
 import { resetHttpRuntimeState } from './http_runtime';
 import { resetPaymentRuntimeStore } from './payment_runtime_store';
 import { handleApiRequest } from './server';
-import { resetEventRegistrationTicketStore } from './event_registration_ticket_store';
 
 async function issueSession(buyerRef: string) {
   const response = await handleApiRequest(
@@ -63,7 +66,7 @@ describe('tickets route', () => {
     expect(response.status).toBe(200);
     expect(json.data.id).toBe(registration.data.ticket.ticketId);
     expect(json.data.event.slug).toBe('open-studio-day');
-    expect(json.data.accessCode).toMatch(/^[A-HJ-NP-Z2-9]{8}$/);
+    expect(json.data.accessCode).toMatch(/^\d{6}$/);
     expect(json.data.qrPayload).toMatch(/^mix7:ticket:/);
   });
 
@@ -114,7 +117,51 @@ describe('tickets route', () => {
     expect(Array.isArray(json.data.tickets)).toBe(true);
     expect(json.data.tickets).toHaveLength(1);
     expect(json.data.tickets[0].event.slug).toBe('open-studio-day');
-    expect(json.data.tickets[0].accessCode).toMatch(/^[A-HJ-NP-Z2-9]{8}$/);
+    expect(json.data.tickets[0].accessCode).toMatch(/^\d{6}$/);
+  });
+
+  it('issues unique numeric access codes within one event', async () => {
+    const first = await issueSession('12121212-1212-4212-8212-121212121212');
+    const second = await issueSession('34343434-3434-4343-8343-343434343434');
+
+    const firstRegistration = await createFreeRegistration(first.data.sessionId);
+    const secondRegistration = await createFreeRegistration(second.data.sessionId);
+
+    const firstTicket = await handleApiRequest(
+      new Request(`http://render.local/tickets/${firstRegistration.data.ticket.ticketId}`, {
+        headers: {
+          'x-session-id': first.data.sessionId,
+        },
+      }),
+    );
+    const secondTicket = await handleApiRequest(
+      new Request(`http://render.local/tickets/${secondRegistration.data.ticket.ticketId}`, {
+        headers: {
+          'x-session-id': second.data.sessionId,
+        },
+      }),
+    );
+
+    const firstJson = await firstTicket.json();
+    const secondJson = await secondTicket.json();
+
+    expect(firstJson.data.accessCode).toMatch(/^\d{6}$/);
+    expect(secondJson.data.accessCode).toMatch(/^\d{6}$/);
+    expect(firstJson.data.accessCode).not.toBe(secondJson.data.accessCode);
+  });
+
+  it('resolves collisions deterministically within an event', () => {
+    const occupiedCodes = new Set(['311394']);
+
+    const result = buildTicketAccessCode({
+      actorId: 'act_collision',
+      eventId: 'evt_7f1ed0d65b3d7b6b18dc1001',
+      registrationId: 'reg_collision',
+      occupiedCodes,
+    });
+
+    expect(result).toMatch(/^\d{6}$/);
+    expect(result).not.toBe('311394');
   });
 
   it('rejects ticket access for a different actor', async () => {

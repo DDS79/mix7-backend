@@ -164,29 +164,61 @@ function buildTicketId(registrationId: string) {
   return `tkt_${hashRequest({ registrationId, kind: 'event_ticket' }).slice(0, 24)}`;
 }
 
-const ACCESS_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const ACCESS_CODE_LENGTH = 8;
+const ACCESS_CODE_SPACE = 1_000_000;
+const ACCESS_CODE_LENGTH = 6;
 
-function buildTicketAccessCode(args: {
+function buildTicketAccessCodeCandidate(args: {
   actorId: string;
   eventId: string;
   registrationId: string;
+  attempt: number;
 }) {
   const seed = hashRequest({
     actorId: args.actorId,
     eventId: args.eventId,
     registrationId: args.registrationId,
     kind: 'event_access_code',
+    attempt: args.attempt,
   });
 
-  let code = '';
-  for (let index = 0; index < ACCESS_CODE_LENGTH; index += 1) {
-    const chunk = seed.slice(index * 2, index * 2 + 2);
-    const value = Number.parseInt(chunk, 16);
-    code += ACCESS_CODE_ALPHABET[value % ACCESS_CODE_ALPHABET.length];
+  const value = Number.parseInt(seed.slice(0, 12), 16) % ACCESS_CODE_SPACE;
+  return String(value).padStart(ACCESS_CODE_LENGTH, '0');
+}
+
+function listOccupiedAccessCodesForEvent(eventId: string) {
+  return new Set(
+    Array.from(tickets.values())
+      .filter((ticket) => ticket.eventId === eventId)
+      .map((ticket) => ticket.accessCode),
+  );
+}
+
+export function buildTicketAccessCode(args: {
+  actorId: string;
+  eventId: string;
+  registrationId: string;
+  occupiedCodes?: ReadonlySet<string>;
+}) {
+  const occupiedCodes = args.occupiedCodes ?? listOccupiedAccessCodesForEvent(args.eventId);
+
+  for (let attempt = 0; attempt < ACCESS_CODE_SPACE; attempt += 1) {
+    const candidate = buildTicketAccessCodeCandidate({
+      actorId: args.actorId,
+      eventId: args.eventId,
+      registrationId: args.registrationId,
+      attempt,
+    });
+
+    if (!occupiedCodes.has(candidate)) {
+      return candidate;
+    }
   }
 
-  return code;
+  throw new EventRegistrationTicketError(
+    'ACCESS_CODE_SPACE_EXHAUSTED',
+    'Event access code space is exhausted.',
+    409,
+  );
 }
 
 function buildTicketBarcodeRef(ticketId: string) {
@@ -345,6 +377,7 @@ export function createEventRegistration(args: {
         actorId: args.actorId,
         eventId: event.id,
         registrationId: registration.id,
+        occupiedCodes: listOccupiedAccessCodesForEvent(event.id),
       }),
       barcodeRef: buildTicketBarcodeRef(ticketId),
       qrPayload: buildTicketQrPayload(ticketId),
