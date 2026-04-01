@@ -13,9 +13,11 @@ import { POST as postPaymentConfirm } from './payment_confirm_route';
 import { POST as postPaymentIntent } from './payment_intent_route';
 import { POST as postRegistrations } from './registrations_route';
 import { POST as postSessionIssue } from './session_issue_route';
-import { GET_BY_ID as getTicketById } from './tickets_route';
+import { GET as getTickets, GET_BY_ID as getTicketById } from './tickets_route';
 
-export const ALLOWED_CORS_ORIGINS = new Set(BACKEND_RUNTIME_CONFIG.allowedWebOrigins);
+export const ALLOWED_CORS_ORIGINS = new Set(
+  BACKEND_RUNTIME_CONFIG.effectiveAllowedWebOrigins,
+);
 
 type RouteHandler = (request: Request) => Promise<Response>;
 
@@ -53,6 +55,9 @@ function routeRequest(method: string, pathname: string): RouteHandler | null {
   }
   if (method === 'GET' && pathname === '/events') {
     return getEvents;
+  }
+  if (method === 'GET' && pathname === '/tickets') {
+    return getTickets;
   }
   if (method === 'POST' && pathname === '/registrations') {
     return postRegistrations;

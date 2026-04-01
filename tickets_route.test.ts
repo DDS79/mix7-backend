@@ -94,6 +94,29 @@ describe('tickets route', () => {
     expect(firstJson.data.accessCode).toBe(secondJson.data.accessCode);
   });
 
+  it('lists owned tickets for the resolved actor', async () => {
+    const first = await issueSession('88888888-8888-4888-8888-888888888888');
+    const second = await issueSession('99999999-9999-4999-8999-999999999999');
+
+    await createFreeRegistration(first.data.sessionId);
+    await createFreeRegistration(second.data.sessionId);
+
+    const response = await handleApiRequest(
+      new Request('http://render.local/tickets', {
+        headers: {
+          'x-session-id': first.data.sessionId,
+        },
+      }),
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(json.data.tickets)).toBe(true);
+    expect(json.data.tickets).toHaveLength(1);
+    expect(json.data.tickets[0].event.slug).toBe('open-studio-day');
+    expect(json.data.tickets[0].accessCode).toMatch(/^[A-HJ-NP-Z2-9]{8}$/);
+  });
+
   it('rejects ticket access for a different actor', async () => {
     const first = await issueSession('55555555-5555-4555-8555-555555555555');
     const second = await issueSession('66666666-6666-4666-8666-666666666666');

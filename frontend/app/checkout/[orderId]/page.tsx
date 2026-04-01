@@ -13,6 +13,8 @@ import {
   clearPendingCheckout,
   readPendingCheckout,
   readSessionState,
+  writePendingCheckout,
+  writeSessionState,
 } from '@/entities/session/lib/sessionStorage';
 import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Card';
@@ -32,9 +34,60 @@ export default function CheckoutPage() {
   const orderId = Array.isArray(params.orderId) ? params.orderId[0] : params.orderId;
 
   useEffect(() => {
+    if (!orderId) {
+      setBootstrapped(true);
+      return;
+    }
+
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const handoffSessionId = hashParams.get('sessionId');
+    const handoffBuyerRef = hashParams.get('buyerRef');
+    const handoffActorId = hashParams.get('actorId');
+    const handoffAuthAccountId = hashParams.get('authAccountId');
+    const handoffTrustLevel = hashParams.get('trustLevel');
+    const handoffEventSlug = hashParams.get('eventSlug');
+    const handoffTotalMinor = hashParams.get('totalMinor');
+    const handoffCurrency = hashParams.get('currency');
+
+    if (
+      handoffSessionId &&
+      handoffBuyerRef &&
+      handoffActorId &&
+      handoffAuthAccountId &&
+      handoffTrustLevel
+    ) {
+      writeSessionState({
+        buyerRef: handoffBuyerRef,
+        sessionId: handoffSessionId,
+        actorId: handoffActorId,
+        authAccountId: handoffAuthAccountId,
+        trustLevel: handoffTrustLevel,
+      });
+    }
+
+    if (
+      handoffEventSlug &&
+      handoffTotalMinor &&
+      handoffCurrency
+    ) {
+      const totalMinor = Number.parseInt(handoffTotalMinor, 10);
+      if (Number.isFinite(totalMinor) && totalMinor > 0) {
+        writePendingCheckout({
+          orderId,
+          eventSlug: handoffEventSlug,
+          totalMinor,
+          currency: handoffCurrency,
+        });
+      }
+    }
+
+    if (window.location.hash) {
+      window.history.replaceState(null, '', `/checkout/${orderId}`);
+    }
+
     const session = readSessionState();
     setSessionId(session?.sessionId ?? null);
-    setCheckout(orderId ? readPendingCheckout(orderId) : null);
+    setCheckout(readPendingCheckout(orderId));
     setBootstrapped(true);
   }, [orderId]);
 

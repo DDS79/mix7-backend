@@ -34,6 +34,20 @@ describe('HTTP web service packaging', () => {
     expect(response.headers.get('access-control-allow-methods')).toContain('POST');
   });
 
+  it('answers CORS preflight for the exact Vercel frontend origin', async () => {
+    const response = await handleApiRequest(new Request('http://render.local/session/issue', {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://mix7-frontend.vercel.app',
+      },
+    }));
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('access-control-allow-origin')).toBe(
+      'https://mix7-frontend.vercel.app',
+    );
+  });
+
   it('issues session and resolves debug context publicly', async () => {
     const sessionResponse = await handleApiRequest(new Request('http://render.local/session/issue', {
       method: 'POST',

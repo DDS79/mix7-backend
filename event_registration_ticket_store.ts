@@ -443,3 +443,39 @@ export function getOwnedTicket(args: {
     orderId: ticket.orderId,
   };
 }
+
+export function listOwnedTickets(args: { actorId: string }) {
+  return Array.from(tickets.values())
+    .filter((ticket) => ticket.actorId === args.actorId)
+    .map((ticket) => {
+      const event = eventsById.get(ticket.eventId);
+      if (!event) {
+        throw new EventRegistrationTicketError(
+          'TICKET_EVENT_NOT_FOUND',
+          'Ticket event not found.',
+          500,
+        );
+      }
+
+      return {
+        id: ticket.id,
+        status: ticket.status,
+        accessClass: ticket.accessClass,
+        validFrom: ticket.validFrom,
+        validTo: ticket.validTo,
+        accessCode: ticket.accessCode,
+        barcodeRef: ticket.barcodeRef,
+        qrPayload: ticket.qrPayload,
+        event: {
+          id: event.id,
+          slug: event.slug,
+          title: event.title,
+          startsAt: event.startsAt,
+          endsAt: event.endsAt,
+        },
+        registrationId: ticket.registrationId,
+        orderId: ticket.orderId,
+      };
+    })
+    .sort((left, right) => left.event.startsAt.localeCompare(right.event.startsAt));
+}
