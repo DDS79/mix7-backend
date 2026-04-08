@@ -1,0 +1,418 @@
+MIX7 PLATFORM — AIOPS ALERT LAYER FOR TASK PROTOCOL / STUCK WORK / SILENT WORK / ZOMBIE TASKS
+
+1. Classification
+
+- source validity:
+  - primary truth = protocol-compliant git commits
+  - secondary truth = current filtered working tree only for protocol-debt signal
+- contract:
+  - alerts may exist only from explicit artifact signals
+  - no alert may be inferred from vague intuition
+- platform:
+  - terminal CLI inside `project-control/`
+  - integrated into existing report pipeline
+- node implementation:
+  - alert derivation engine over existing protocol/report artifacts
+- review:
+  - secondary; alerts are not review opinions
+
+2. Forensic findings
+
+Files inspected:
+- `project-control/report.sh`
+- `project-control/config.json`
+- `project-control/src/report-core.js`
+- `project-control/src/protocol.js`
+- `project-control/src/check-commits.js`
+- `project-control/src/report-core.test.js`
+
+Signals already present before this task:
+- protocol parser for `MIX7-XXX <start|work|done|blocked>: ...`
+- report payload with:
+  - completed tasks
+  - in-progress tasks
+  - blocked tasks
+  - protocol violations
+- deterministic date resolution
+- filtered repo noise handling
+
+Signals not present before this task:
+- explicit alert semantics
+- severity model
+- alert artifact persistence
+- separate CLI for alerts
+- owner-level alert section in report
+
+What can be proven from git:
+- protocol violation in commit history
+- latest lifecycle state per task ID
+- age of last valid lifecycle commit
+- unfinished task with no later lifecycle transition
+
+What cannot be proven from git alone:
+- whether a developer was expected to work in a given time window
+- whether a person was “silently working” without committing
+- whether dirty tree belongs to a specific task ID
+- whether a long task is legitimately active unless protocol shows progress
+
+What can honestly be treated as stuck:
+- task latest state = `start` or `work`
+- no newer protocol commit for the same task beyond explicit threshold
+- no `done`
+- no `blocked`
+
+What cannot honestly be treated as stuck:
+- vague “мало коммитов”
+- dirty tree noise
+- absence of activity during an unproven working window
+
+False positive / over-alerting risks:
+- current repo has legacy commits without protocol
+- current repo has noisy uncommitted work
+- naive silence detection would alert on weekends, timezone offsets, or intentional offline work
+
+Conclusion:
+- `PROTOCOL_VIOLATION` is deterministic and safe
+- `TASK_STUCK` is deterministic and safe
+- `ZOMBIE_TASK` is implementable as explicit bounded heuristic over long stale unfinished tasks
+- `SILENT_WORK` is not provable now from git alone and must stay deferred
+- `LONG_RUNNING_TASK` is also deferred now to avoid noisy overlap with stuck/zombie
+
+3. Solution space
+
+Path A — Passive reporting only
+- evidence quality: medium
+- determinism: medium
+- false positive risk: low
+- false negative risk: high
+- replayability: high
+- implementation complexity: low
+- owner usefulness: low
+- verdict: rejected
+
+Path B — Heuristic-heavy alerting
+- evidence quality: low
+- determinism: low
+- false positive risk: high
+- false negative risk: medium
+- replayability: low
+- implementation complexity: medium
+- owner usefulness: low because of noise
+- verdict: rejected
+
+Path C — Deterministic artifact-based alerting
+- evidence quality: high
+- determinism: high
+- false positive risk: low
+- false negative risk: medium
+- replayability: high
+- implementation complexity: medium
+- owner usefulness: high
+- verdict: strong candidate
+
+Path D — Hybrid deterministic + bounded heuristics
+- evidence quality: high if heuristics are explicit and narrow
+- determinism: high
+- false positive risk: low to medium
+- false negative risk: lower than pure deterministic
+- replayability: high
+- implementation complexity: medium
+- owner usefulness: highest
+- verdict: chosen
+
+Reason for choosing Path D:
+- deterministic core handles protocol violations and stuck tasks
+- bounded heuristic is acceptable only for zombie detection, because it is explicit, threshold-based, and testable
+- silence detection remains deferred because it is not provable
+
+4. Internal AI arbitration
+
+Backend Architect
+- demanded contract truth only
+- rejected hidden magic
+- approved deterministic protocol violations and stuck detection
+
+SRE
+- demanded reproducibility and anti-noise
+- rejected broad heuristic alerting
+- approved deferred `SILENT_WORK`
+
+Product Architect
+- wanted owner-readable output in under 2 minutes
+- required grouped severity
+- rejected spammy warning floods
+
+Frontend/Tooling Architect
+- required minimal integration into existing reporting layer
+- preferred reuse of current repo signals and config
+
+Chief Architect
+- chose embedded alert layer plus dedicated CLI
+- rationale:
+  - separate alert artifacts are useful
+  - owner still needs one-command visibility in report
+  - reusing current report payload avoids second truth source
+
+5. Chosen architecture
+
+Decision:
+- build a separate alert pipeline over the same protocol/report truth
+- integrate it inline into `report.sh`
+
+Structure:
+- `project-control/alert.sh`
+- `project-control/alerts/`
+- `project-control/src/alert-core.js`
+- `project-control/src/alert-core.test.js`
+- `project-control/src/alert.js`
+
+Why not alert-only inside report-core:
+- owner needs standalone alert command
+- persisted alert snapshots are useful
+- but report still surfaces alerts inline for one-command owner view
+
+6. Alert contract
+
+A. PROTOCOL_VIOLATION
+- code: `PROTOCOL_VIOLATION`
+- label: `Нарушение протокола`
+- severity: `critical`
+- trigger:
+  - invalid commit in selected day range
+  - or current dirty work without protocol commit identity
+- required evidence:
+  - invalid parsed commit message
+  - or filtered working-tree activity without protocol commit
+- suppression:
+  - none beyond existing repo-noise exclusions
+- owner meaning:
+  - protocol truth is broken right now
+- type:
+  - deterministic
+- implemented now:
+  - yes
+
+B. TASK_STUCK
+- code: `TASK_STUCK`
+- label: `Задача зависла`
+- severity: `high`
+- trigger:
+  - latest lifecycle state = `start` or `work`
+  - no newer protocol commit for same task beyond threshold
+  - no `done`
+  - no `blocked`
+- required evidence:
+  - task timeline from protocol commits
+- suppression:
+  - no alert if newer protocol commit exists
+  - no alert if latest state is `done`
+  - no alert if latest state is `blocked`
+- owner meaning:
+  - task entered work but stopped progressing
+- type:
+  - deterministic
+- implemented now:
+  - yes
+
+C. ZOMBIE_TASK
+- code: `ZOMBIE_TASK`
+- label: `Зомби-задача`
+- severity: `warning`
+- trigger:
+  - latest lifecycle state = `start` or `work`
+  - no `done`
+  - no `blocked`
+  - no progress beyond longer threshold
+- required evidence:
+  - same task timeline as `TASK_STUCK`
+- suppression:
+  - no zombie alert before zombie threshold
+  - no zombie alert once `done` or `blocked` appears
+- owner meaning:
+  - task exists in system but appears abandoned
+- type:
+  - bounded heuristic
+- implemented now:
+  - yes
+
+D. SILENT_WORK
+- code: `SILENT_WORK`
+- label: `Тихая работа`
+- severity: deferred
+- trigger:
+  - would require proven expected work window
+- required evidence:
+  - not available in git alone
+- suppression:
+  - n/a
+- owner meaning:
+  - not reliable right now
+- type:
+  - not implemented
+- implemented now:
+  - no, explicitly deferred
+
+E. LONG_RUNNING_TASK
+- code: `LONG_RUNNING_TASK`
+- label: `Долгая задача`
+- severity: deferred
+- status:
+  - not implemented now
+- reason:
+  - overlaps with `TASK_STUCK` / `ZOMBIE_TASK`
+  - would increase noise without adding stronger truth
+
+7. Time / threshold model
+
+Timezone:
+- `Europe/Moscow`
+
+Time unit:
+- whole calendar days
+
+Thresholds:
+- `TASK_STUCK`:
+  - `>= 3` days since last valid lifecycle commit
+- `ZOMBIE_TASK`:
+  - `>= 7` days since last valid lifecycle commit
+- `SILENT_WORK`:
+  - not implemented because expected work window is not provable from current artifacts
+
+Model notes:
+- thresholds are calendar-day based, not working-hour based
+- this is explicit and deterministic
+- no “если давно”, “если мало”, or implicit working-hour guesswork
+
+8. Exact files changed
+
+Added:
+- `project-control/alert.sh`
+- `project-control/alerts/.gitignore`
+- `project-control/src/alert-core.js`
+- `project-control/src/alert-core.test.js`
+- `project-control/src/alert.js`
+
+Modified:
+- `project-control/config.json`
+- `project-control/src/report-core.js`
+- `project-control/src/report.js`
+
+9. Implementation
+
+What was implemented:
+- standalone CLI:
+  - `bash project-control/alert.sh DATE [--full]`
+- deterministic alert derivation from existing report payload
+- alert artifact persistence:
+  - `project-control/alerts/YYYY-MM-DD.json`
+  - `project-control/alerts/YYYY-MM-DD.txt`
+- inline `АЛЕРТЫ` section inside owner report
+- Russian owner-facing output
+
+What was explicitly not implemented:
+- `SILENT_WORK`
+- `LONG_RUNNING_TASK`
+
+Reason:
+- not provable enough right now without external calendar/work-window truth
+
+10. Verification evidence
+
+Unit tests:
+- command:
+  - `node --test project-control/src/report-core.test.js project-control/src/alert-core.test.js`
+- result:
+  - `pass 11`
+  - `fail 0`
+
+Determinism proof:
+- command:
+  - run `alert.sh today` twice
+  - compare outputs with `cmp`
+- result:
+  - `ALERT_DETERMINISTIC_OK`
+
+Protocol violation correctness:
+- real run:
+  - `bash project-control/alert.sh 2026-03-28 --full`
+- result:
+  - produced only `PROTOCOL_VIOLATION` alerts for invalid legacy commits and current uncommitted work
+  - no fake stuck/zombie alerts
+
+Reporting integration correctness:
+- command:
+  - `bash project-control/report.sh 2026-03-28 --full`
+- result:
+  - report contains explicit section:
+    - `АЛЕРТЫ`
+  - reports grouped counts and top alert subjects
+  - existing report contract remains readable
+
+Noise resistance:
+- build artifacts remain filtered by existing config:
+  - `frontend/.next/`
+  - `node_modules/`
+  - `dist/`
+  - `frontend/.env.local`
+- these paths do not create task-bound alerts
+
+GOOD example:
+- unit test:
+  - task `MIX7-042` latest protocol commit on `2026-04-05`
+  - report date `2026-04-06`
+  - result:
+    - no false `TASK_STUCK`
+
+BAD example:
+- unit test:
+  - task `MIX7-041` latest protocol commit on `2026-04-02`
+  - report date `2026-04-06`
+  - result:
+    - `TASK_STUCK`
+
+BAD example:
+- real repo run on `2026-03-28`
+  - commits without protocol
+  - result:
+    - `PROTOCOL_VIOLATION`
+
+BAD example:
+- unit test:
+  - task `MIX7-050` latest state `start`, last progress `2026-04-01`
+  - report date `2026-04-10`
+  - result:
+    - `ZOMBIE_TASK`
+
+Generated artifacts proven:
+- `project-control/alerts/2026-03-28-full.json`
+- `project-control/alerts/2026-03-28-full.txt`
+- `project-control/alerts/2026-04-06.json`
+- `project-control/alerts/2026-04-06.txt`
+
+11. Remaining limitations
+
+- current repo history is mostly legacy and therefore mostly shows `PROTOCOL_VIOLATION`, not valid task lifecycles
+- `SILENT_WORK` remains intentionally deferred
+- `ZOMBIE_TASK` is bounded heuristic, not pure deterministic truth
+- current dirty tree can prove protocol debt, but cannot be mapped to a specific task ID without commit
+- alerting still depends on local checkout branch status; local repo behind remote is surfaced as risk, not as alert class
+
+12. Final verdict
+
+Alert layer is implemented.
+
+It is not a generic notification system.
+It is a deterministic project nervous system over real engineering artifacts.
+
+What it now does:
+- surfaces protocol degradation explicitly
+- detects provable stuck work
+- detects bounded zombie tasks
+- persists alert snapshots
+- exposes alerts both directly through CLI and inline in owner report
+
+What it explicitly refuses to do:
+- invent `SILENT_WORK`
+- infer blocked/stuck by feeling
+- derive alerts from build junk
+- add a second truth source

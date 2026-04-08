@@ -1,0 +1,89 @@
+{
+  "taskKeyPattern": "\\bMIX7-[0-9]{3,}\\b",
+  "protocol": {
+    "taskIdPattern": "^MIX7-[0-9]{3,}$",
+    "states": ["start", "work", "done", "blocked"],
+    "staleInProgressDays": 3
+  },
+  "alerts": {
+    "timezone": "Europe/Moscow",
+    "taskStuckDays": 3,
+    "zombieTaskDays": 7,
+    "enable": {
+      "PROTOCOL_VIOLATION": true,
+      "TASK_STUCK": true,
+      "ZOMBIE_TASK": true,
+      "SILENT_WORK": false,
+      "LONG_RUNNING_TASK": false
+    }
+  },
+  "excludePrefixes": [
+    "dist/",
+    "node_modules/",
+    "project-control/reports/",
+    "project-control/state/",
+    "frontend/.next/",
+    "frontend/node_modules/"
+  ],
+  "excludeExact": [
+    ".env",
+    ".DS_Store",
+    "frontend/.env.local"
+  ],
+  "areaRules": [
+    {
+      "label": "frontend / web",
+      "prefixes": ["frontend/"]
+    },
+    {
+      "label": "payments / checkout",
+      "prefixes": [
+        "payment_",
+        "checkout_"
+      ]
+    },
+    {
+      "label": "tickets / registrations / events",
+      "prefixes": [
+        "tickets_",
+        "registrations_",
+        "events_",
+        "event_registration_"
+      ]
+    },
+    {
+      "label": "runtime / session / server",
+      "prefixes": [
+        "server.ts",
+        "session_",
+        "http_",
+        "backend_runtime_config",
+        "debug_session_"
+      ]
+    },
+    {
+      "label": "docs / process",
+      "prefixes": [
+        "README.md",
+        "ARCHITECTURE.md",
+        "DEFINITION_OF_DONE.md",
+        "ENVIRONMENT_MATRIX.md",
+        "POST_DEPLOY_VERIFICATION.md",
+        "RELEASE_CHECKLIST.md",
+        "VERTICAL_DELIVERY_TEMPLATE.md",
+        "docs/"
+      ]
+    },
+    {
+      "label": "tests / stubs / tooling",
+      "prefixes": [
+        "test_stubs/",
+        "jest.config.cjs",
+        "tsconfig.",
+        "package.json",
+        "package-lock.json",
+        "render.yaml"
+      ]
+    }
+  ]
+}

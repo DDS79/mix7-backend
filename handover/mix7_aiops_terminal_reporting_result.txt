@@ -1,0 +1,334 @@
+MIX7 PLATFORM — AIOPS TERMINAL REPORTING SYSTEM (AUTO TASK STATE, RU OUTPUT)
+
+1. Classification
+
+- source validity:
+  - доступны `git log`, `git numstat`, `git status`, `git ls-files --others`
+  - отсутствуют стабильные `MIX7-XXX` в commit history текущего checkout
+  - отсутствует доказуемый blocked marker
+- contract:
+  - ручной `tasks.json` запрещён
+  - state должен восстанавливаться автоматически
+- platform:
+  - terminal-first CLI
+  - русский owner-readable output
+  - deterministic rebuild
+- node implementation:
+  - reconstruction pipeline внутри repo под `project-control/`
+- review:
+  - blocked / risks / owner decisions допускаются только по доказуемым сигналам
+
+2. Read-only forensic findings
+
+Repo under analysis:
+- `repo root`
+
+Git truth:
+- branch: `main`
+- status header: `## main...origin/main [behind 6]`
+- visible commit history:
+  - `4b9c141 feat: add explicit checkout order source`
+  - `8158d13 fix(build): explicit devDependencies install for render`
+  - `5c88800 fix: deterministic build and runtime error taxonomy for render`
+  - `e10e4b1 initial backend`
+
+Available signals:
+- commit subject
+- commit hash
+- commit date
+- numstat per file
+- current tracked modifications
+- current untracked files
+- path-based grouping potential
+
+Missing signals:
+- stable task IDs in commit messages
+- explicit owner priority
+- explicit blocked-state marker
+- actual human time spent
+
+False inference zones:
+- repo has heavy untracked noise from `frontend/.next`
+- local `.env.local` exists and must not count as task signal
+- dirty tree alone does not prove completion
+- commit subject without task ID does not prove ideal grouping granularity
+
+Observed raw-vs-filtered mismatch:
+- raw untracked count from git: `751`
+- filtered working-signal count used by report: `77`
+- conclusion:
+  - pure git raw feed is too noisy without deterministic artifact filtering
+
+3. Solution space
+
+Path A — Manual `tasks.json`
+- rejected
+- violates invariant: no manual task state maintenance
+- low reliability
+- invites stale and unverifiable data
+
+Path B — Git-driven reconstruction only
+- strong deterministic base
+- good for completed tasks
+- insufficient alone for truthful `in progress`, because owner also needs current working state
+- fails to capture dirty tree without commits
+
+Path C — Hybrid (`git + working tree artifacts`)
+- chosen
+- completed tasks: from commit history only
+- in-progress tasks: from current filtered working tree only
+- blocked tasks: only if explicit git/sandbox/conflict signal exists
+- deterministic, reproducible, and more truthful than pure commit-only reconstruction
+
+Path D — External system
+- rejected
+- adds a second source of truth
+- violates minimality
+
+4. Internal AI arbitration
+
+Backend Architect:
+- requires deterministic source
+- rejects manual state
+- accepts git as primary truth
+
+SRE:
+- requires reproducibility
+- rejects undocumented heuristics
+- requires filtering of `.next`, env files, and generated junk
+
+Product Architect:
+- requires Russian output
+- requires report readable in under 2 minutes
+- requires owner-visible sections:
+  - completed
+  - in progress
+  - blocked
+  - risks
+  - owner decisions
+
+Chief Architect:
+- chooses Path C
+- reason:
+  - pure git works for completed work only
+  - owner-level reality also needs current task state
+  - current task state is only truthfully available from dirty tree
+  - therefore:
+    - commits = completed truth
+    - dirty tree = current work truth
+    - no manual override layer
+
+5. Chosen architecture
+
+Source of truth:
+- primary: git history
+- secondary: current working tree
+- forbidden: manual `tasks.json`
+
+Pipeline:
+- collect
+  - `git log`
+  - `git numstat`
+  - `git status --short --branch -uall`
+  - `git ls-files --others --exclude-standard`
+- derive
+  - completed tasks from commits on selected date
+  - in-progress tasks from filtered dirty tree
+  - blocked tasks only from explicit conflict/block signals
+- score
+  - quality `0–10`
+  - effort band
+  - risks and owner decisions
+- build
+  - Russian owner-readable text report
+  - deterministic JSON state snapshot
+- output
+  - stdout
+  - `project-control/reports/*.txt`
+  - `project-control/state/*.json`
+
+Grouping rules:
+- first choice: explicit `MIX7-XXX` from commit subject
+- fallback: normalized commit subject
+- working tree groups: path-area mapping from config
+
+Important invariant:
+- there are no completed tasks without commits
+- there are no blocked tasks without explicit proof
+- there is no hidden task database
+
+6. Implementation
+
+Created structure:
+
+project-control/
+  report.sh
+  config.json
+  reports/
+    .gitignore
+  state/
+    .gitignore
+  src/
+    report-core.js
+    report-core.test.js
+    report.js
+
+Implemented behavior:
+
+`project-control/report.sh`
+- CLI entrypoint
+- usage:
+  - `./project-control/report.sh today`
+  - `./project-control/report.sh yesterday`
+  - `./project-control/report.sh 2026-03-28 --full`
+
+`project-control/config.json`
+- deterministic exclusion rules
+- path-area mapping
+- task key regex
+
+`project-control/src/report-core.js`
+- date resolution
+- git signal collection
+- commit parsing
+- dirty tree parsing
+- artifact exclusion
+- task derivation
+- deterministic quality scoring
+- deterministic effort band estimation
+- owner decision / risk generation
+- text report building
+
+`project-control/src/report.js`
+- CLI orchestration
+- writes report and raw JSON snapshot
+- prints report to stdout
+
+`project-control/src/report-core.test.js`
+- self-test for core deterministic logic
+
+What the system does NOT do:
+- does not ask a human to update state
+- does not infer blocked tasks from vibes
+- does not treat `.next` as work
+- does not invent task IDs when history does not contain them
+
+7. Verification
+
+Proof 1 — deterministic test coverage
+- command:
+  - `node --test project-control/src/report-core.test.js`
+- result:
+  - `pass 6`
+  - `fail 0`
+
+Proof 2 — identical input gives identical report
+- command:
+  - run `today` twice
+  - compare with `cmp`
+- result:
+  - `DETERMINISTIC_OK`
+
+Proof 3 — real output for a date with commit history
+- command:
+  - `bash project-control/report.sh 2026-03-28 --full`
+- result:
+  - completed tasks reconstructed from real commits
+  - in-progress tasks reconstructed from current working tree
+  - blocked remained empty because not proven
+
+Proof 4 — real output for current date
+- command:
+  - `bash project-control/report.sh today`
+- result:
+  - no completed tasks claimed without commits
+  - current work shown from filtered working tree
+
+Proof 5 — generated artifacts exist
+- reports:
+  - `project-control/reports/2026-03-28-full.txt`
+  - `project-control/reports/2026-04-06.txt`
+- state:
+  - `project-control/state/2026-03-28-full.json`
+  - `project-control/state/2026-04-06.json`
+
+8. Example outputs
+
+Example command:
+- `bash project-control/report.sh today`
+
+Example high-level result:
+- completed:
+  - none proven for selected day
+- in progress:
+  - `docs / process`
+  - `frontend / web`
+  - `payments / checkout`
+  - `runtime / session / server`
+  - `tickets / registrations / events`
+- blocked:
+  - none proven
+- risks:
+  - local branch behind origin
+  - raw artifact noise in repo
+- owner decisions:
+  - whether to enforce `MIX7-XXX`
+  - whether to harden repo hygiene
+
+Example command:
+- `bash project-control/report.sh 2026-03-28 --full`
+
+Example reconstructed completed tasks:
+- `add explicit checkout order source`
+- `deterministic build and runtime error taxonomy for render`
+- `explicit devDependencies install for render`
+- `initial backend`
+
+9. Proof of correctness
+
+Invariant 1:
+- no tasks without git evidence in `completed`
+- proven by implementation:
+  - completed section is derived only from `git log` within the date window
+
+Invariant 2:
+- no manual state file
+- proven by implementation:
+  - there is no `tasks.json`
+  - state JSON is generated output only
+
+Invariant 3:
+- no artifact-based fake tasks
+- proven by implementation:
+  - `frontend/.next`, `node_modules`, `dist`, `.env.local` excluded in config
+
+Invariant 4:
+- blocked tasks are not guessed
+- proven by implementation:
+  - blocked list stays empty unless explicit signal exists
+
+Invariant 5:
+- same input gives same output
+- proven by repeated-run comparison
+
+10. Remaining limitations
+
+- Without `MIX7-XXX` in commits, grouping must fall back to normalized subject.
+- Quality score and effort band are deterministic engineering estimates, not literal human timesheets.
+- Owner-level truth for current work depends on the local checkout being the intended source of work.
+- Repo hygiene is still noisy; the reporting system filters noise, but does not fix the repo itself.
+
+11. Final verdict
+
+Terminal-based AIOps Reporting System is implemented.
+
+It restores task state automatically from real engineering signals:
+- git commits for completed work
+- filtered working tree for current work
+
+It avoids manual reporting, avoids invented blocked states, produces Russian owner-readable CLI output, and writes deterministic report/state artifacts that can be replayed.
+
+Primary CLI:
+- `bash project-control/report.sh today`
+- `bash project-control/report.sh yesterday`
+- `bash project-control/report.sh 2026-03-28 --full`

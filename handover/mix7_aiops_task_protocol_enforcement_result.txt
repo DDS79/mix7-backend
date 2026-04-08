@@ -1,0 +1,285 @@
+MIX7 PLATFORM — AIOPS TASK PROTOCOL ENFORCEMENT LAYER (MIX7-XXX, DONE, BLOCKED)
+
+1. Classification
+
+- source validity:
+  - primary truth = commit history
+  - task state must be reconstructed only from commit protocol
+- contract:
+  - required commit format:
+    - `MIX7-XXX <start|work|done|blocked>: <description>`
+  - if commit has no `MIX7-XXX`, it does not exist for the task system
+  - if task has no explicit `done`, it is not completed
+  - if task has no explicit `blocked`, it is not blocked
+- platform:
+  - enforcement via local git hook + CI workflow + reporting integration
+- node implementation:
+  - enforcement layer placed inside `project-control/`
+- review:
+  - secondary; review cannot replace protocol truth
+
+2. Read-only forensic findings
+
+Observed repo:
+- `repo root`
+
+Observed problem before fix:
+- commit history contained no stable `MIX7-XXX`
+- reporting could see activity, but not true task lifecycle
+- no explicit `done`
+- no explicit `blocked`
+- therefore:
+  - system could not distinguish completed vs in-progress vs blocked work contract-first
+
+Available signals:
+- `git log`
+- commit subject
+- commit hash / date
+- `git numstat`
+- `git status`
+
+Missing signals before enforcement:
+- task identity
+- lifecycle state
+- deterministic blocked/completed truth
+
+3. Solution space
+
+Path A — Passive validation only
+- report just says “commit without MIX7-XXX”
+- rejected
+- reason:
+  - no behavior change
+  - easy to ignore
+  - invariant not restored
+
+Path B — Local hook only
+- local `commit-msg` hook blocks bad commits
+- useful but insufficient
+- can be bypassed if hook is not installed or is removed
+
+Path C — CI enforcement only
+- central check on push / PR
+- strong remote protection
+- but too late for fast local feedback
+
+Path D — Hybrid: local hook + CI + reporting
+- chosen
+- reason:
+  - local fast failure
+  - remote unavoidable failure
+  - reporting shows protocol debt and state truth
+  - smallest complete enforcement layer
+
+4. Internal AI arbitration
+
+Backend Architect:
+- requires strict contract
+- rejects passive validation
+
+SRE:
+- requires unavoidable verification
+- marks CI layer as mandatory
+
+Product Architect:
+- requires minimal developer pain
+- prefers immediate local failure instead of late remote surprise
+
+Chief Architect:
+- chooses Path D
+- reason:
+  - only hybrid model restores invariant without manual state
+  - local hook improves discipline
+  - CI prevents bypass
+  - reporting keeps owner visibility
+
+5. Chosen architecture
+
+Layer 1 — Local Hook
+- file:
+  - `project-control/hooks/commit-msg`
+- installed to:
+  - `./.git/hooks/commit-msg`
+- behavior:
+  - rejects commit message without protocol
+
+Layer 2 — CI Validation
+- script:
+  - `project-control/src/check-commits.js`
+- workflow:
+  - `.github/workflows/task-protocol.yml`
+- behavior:
+  - checks all commits in push/PR range
+  - rejects invalid messages centrally
+
+Layer 3 — Reporting Integration
+- reporting engine:
+  - `project-control/src/report-core.js`
+- behavior:
+  - completed = latest protocol state is `done` on selected date
+  - in progress = latest protocol state is `start` or `work`
+  - blocked = latest protocol state is `blocked`
+  - protocol violations shown explicitly
+
+6. Implementation
+
+Created / changed files:
+
+- `project-control/src/protocol.js`
+  - canonical regex and parser
+  - `TASK_ID_REGEX = /MIX7-[0-9]{3,}/`
+  - lifecycle states:
+    - `start`
+    - `work`
+    - `done`
+    - `blocked`
+
+- `project-control/src/validate-commit-msg.js`
+  - validates one commit message file
+  - exits `1` on violation
+
+- `project-control/hooks/commit-msg`
+  - local git hook
+  - calls validator
+
+- `project-control/install-hooks.sh`
+  - installs local hook into `.git/hooks/commit-msg`
+
+- `project-control/src/check-commits.js`
+  - validates a git range for CI
+
+- `.github/workflows/task-protocol.yml`
+  - runs validation for `push` and `pull_request`
+
+- `project-control/src/report-core.js`
+  - switched reporting to protocol-first derivation
+  - now reports:
+    - completed
+    - in progress
+    - blocked
+    - protocol violations
+    - long in-progress warnings
+
+- `project-control/config.json`
+  - protocol config added
+
+- `project-control/src/report-core.test.js`
+  - updated tests for protocol layer
+
+Protocol contract now enforced:
+
+GOOD:
+- `MIX7-031 work: session bootstrap`
+- `MIX7-031 done: session bootstrap`
+- `MIX7-099 blocked: waiting for owner decision`
+
+BAD:
+- `fix session`
+- `MIX7-031 fix: session bootstrap`
+- `done: session bootstrap`
+
+7. Verification
+
+Verification 1 — core tests pass
+- command:
+  - `node --test project-control/src/report-core.test.js`
+- result:
+  - `pass 7`
+  - `fail 0`
+
+Verification 2 — local hook installer
+- command:
+  - `bash project-control/install-hooks.sh`
+- result:
+  - installed hook to `.git/hooks/commit-msg`
+
+Verification 3 — local hook rejects bad commit
+- test input:
+  - `fix session`
+- result:
+  - rejected
+  - output contained:
+    - `Commit message rejected by MIX7 task protocol`
+    - `нет TASK ID формата MIX7-XXX`
+    - `нет lifecycle state start|work|done|blocked`
+
+Verification 4 — local hook accepts good commit
+- test input:
+  - `MIX7-031 work: session bootstrap`
+- result:
+  - accepted
+  - proof marker:
+    - `GOOD_ACCEPTED`
+
+Verification 5 — CI script rejects bad range
+- temp repo proof:
+  - bad commit:
+    - `fix session`
+- command:
+  - `node project-control/src/check-commits.js <base>..<bad>`
+- result:
+  - rejected
+  - output:
+    - `MIX7 task protocol violations detected`
+    - bad commit listed explicitly
+
+Verification 6 — CI script accepts good range
+- temp repo proof:
+  - good commit:
+    - `MIX7-031 done: session bootstrap`
+- result:
+  - accepted
+  - output:
+    - `Protocol OK for 1 commit(s)`
+
+Verification 7 — reporting shows protocol violations
+- command:
+  - `bash project-control/report.sh 2026-03-28 --full`
+- result:
+  - sections shown:
+    - `Завершённые задачи`
+    - `Задачи в работе`
+    - `Заблокированные задачи`
+    - `Нарушения протокола`
+  - because legacy commits had no `MIX7-XXX`, report truthfully showed:
+    - no completed/in-progress/blocked protocol tasks
+    - explicit protocol violations for all four legacy commits
+
+8. False-positive control
+
+Prevented false positives:
+- build artifacts still excluded via config
+- `.env.local` excluded
+- dirty tree does not become fake task
+- legacy commits without protocol are not treated as valid tasks
+- `blocked` is not guessed from wording; it requires explicit `blocked:`
+- `done` is not guessed from code changes; it requires explicit `done:`
+
+9. Resulting invariant
+
+After this enforcement layer:
+
+- commit without `MIX7-XXX` is rejected locally
+- commit without lifecycle state is rejected locally
+- bypassed local commit still fails in CI
+- reporting now sees real tasks only through protocol
+- completed/in-progress/blocked are derived from explicit task lifecycle, not from vague activity
+
+10. Remaining limitations
+
+- old history remains legacy history
+- unless old commits are rewritten, they will remain visible as protocol violations, not as valid tasks
+- local uncommitted work still cannot become a task until it is committed with protocol
+- this is intentional and matches the invariant
+
+11. Final verdict
+
+Enforcement layer is implemented.
+
+This is no longer just commit validation.
+It restores the actual system invariant:
+
+- every unit of work must have a task ID
+- every unit of work must have lifecycle state
+- completed and blocked are explicit facts
+- reporting now tracks task truth, not just code motion

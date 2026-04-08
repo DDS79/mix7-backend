@@ -1,0 +1,28 @@
+name: task-protocol
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate-commit-protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate commit protocol
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            RANGE="${{ github.event.pull_request.base.sha }}..${{ github.sha }}"
+          else
+            RANGE="${{ github.event.before }}..${{ github.sha }}"
+          fi
+          node project-control/src/check-commits.js "$RANGE"
