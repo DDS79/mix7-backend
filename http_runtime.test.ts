@@ -1,6 +1,7 @@
 import {
   expireHttpRuntimeSessionIfNeeded,
   issueRuntimeSession,
+  resetHttpRuntimeIdentityForTests,
   resetHttpRuntimeState,
   resolveHttpRuntimeContext,
   revokeHttpRuntimeSession,
@@ -17,6 +18,7 @@ function buildRequest(sessionId: string) {
 
 describe('http runtime execution boundary', () => {
   beforeEach(() => {
+    resetHttpRuntimeIdentityForTests();
     resetHttpRuntimeState();
   });
 
@@ -156,5 +158,42 @@ describe('http runtime execution boundary', () => {
       code: 'POLICY_FORBIDDEN',
       status: 403,
     });
+  });
+
+  it('keeps actor/account/profile durable when only runtime session state resets', async () => {
+    const first = await issueRuntimeSession({
+      buyerRef: 'buyer-http-6',
+      authType: 'external_provider',
+      authStatus: 'active',
+      loginRef: 'tg:6000000001',
+      displayName: 'Telegram Buyer',
+      trustLevel: 'verified',
+      sessionType: 'authenticated',
+    });
+
+    resetHttpRuntimeState();
+
+    await expect(
+      resolveHttpRuntimeContext({
+        request: buildRequest(first.session.id),
+        action: 'account_profile_update',
+      }),
+    ).rejects.toMatchObject({
+      code: 'SESSION_INVALID',
+      status: 401,
+    });
+
+    const second = await issueRuntimeSession({
+      buyerRef: 'buyer-http-6',
+      authType: 'external_provider',
+      authStatus: 'active',
+      loginRef: 'tg:6000000001',
+      trustLevel: 'verified',
+      sessionType: 'authenticated',
+    });
+
+    expect(second.actor.id).toBe(first.actor.id);
+    expect(second.authAccount.id).toBe(first.authAccount.id);
+    expect(second.profile.id).toBe(first.profile.id);
   });
 });

@@ -8,6 +8,8 @@
     "test": "jest --runInBand"
   },
   "dependencies": {
+    "@types/pg": "^8.20.0",
+    "pg": "^8.20.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

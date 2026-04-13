@@ -1,9 +1,13 @@
-import { resetHttpRuntimeState } from './http_runtime';
+import {
+  resetHttpRuntimeIdentityForTests,
+  resetHttpRuntimeState,
+} from './http_runtime';
 import { resetPaymentRuntimeStore, seedRuntimeOrder } from './payment_runtime_store';
 import { handleApiRequest } from './server';
 
 describe('HTTP web service packaging', () => {
   beforeEach(async () => {
+    resetHttpRuntimeIdentityForTests();
     resetHttpRuntimeState();
     resetPaymentRuntimeStore();
   });

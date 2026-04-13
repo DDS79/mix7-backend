@@ -2,7 +2,10 @@ import {
   buildTicketAccessCode,
   resetEventRegistrationTicketStore,
 } from './event_registration_ticket_store';
-import { resetHttpRuntimeState } from './http_runtime';
+import {
+  resetHttpRuntimeIdentityForTests,
+  resetHttpRuntimeState,
+} from './http_runtime';
 import { resetPaymentRuntimeStore } from './payment_runtime_store';
 import { handleApiRequest } from './server';
 
@@ -45,6 +48,7 @@ async function createFreeRegistration(sessionId: string) {
 
 describe('tickets route', () => {
   beforeEach(() => {
+    resetHttpRuntimeIdentityForTests();
     resetHttpRuntimeState();
     resetPaymentRuntimeStore();
     resetEventRegistrationTicketStore();

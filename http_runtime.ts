@@ -1,5 +1,9 @@
 import { NextResponse } from './next_server_compat';
 
+import {
+  accountCoreStore,
+  resetAccountCoreStoreForTests,
+} from './account_core_store';
 import { createResolveActorAuthProfileCommand } from './product_actor_auth_profile';
 import {
   createExpireSessionIfNeededCommand,
@@ -46,9 +50,6 @@ export class HttpRuntimeError extends Error {
   }
 }
 
-const actors = new Map<string, Actor>();
-const authAccounts = new Map<string, AuthAccount>();
-const profiles = new Map<string, ActorProfile>();
 const sessions = new Map<string, AuthSession>();
 const trusts = new Map<string, IdentityTrust>();
 
@@ -57,46 +58,12 @@ function now() {
 }
 
 const resolveActorAuthProfile = createResolveActorAuthProfileCommand({
-  loadActorByBuyerRef: async (buyerRef) => {
-    for (const actor of actors.values()) {
-      if (actor.buyerRef === buyerRef) {
-        return actor;
-      }
-    }
-    return null;
-  },
-  persistActor: async (actor) => {
-    actors.set(actor.id, actor);
-    return actor;
-  },
-  loadAuthAccount: async (actorId, authType, loginRef) => {
-    for (const account of authAccounts.values()) {
-      if (
-        account.actorId === actorId &&
-        account.authType === authType &&
-        account.loginRef === loginRef
-      ) {
-        return account;
-      }
-    }
-    return null;
-  },
-  persistAuthAccount: async (account) => {
-    authAccounts.set(account.id, account);
-    return account;
-  },
-  loadActorProfile: async (actorId) => {
-    for (const profile of profiles.values()) {
-      if (profile.actorId === actorId) {
-        return profile;
-      }
-    }
-    return null;
-  },
-  persistActorProfile: async (profile) => {
-    profiles.set(profile.id, profile);
-    return profile;
-  },
+  loadActorByBuyerRef: accountCoreStore.loadActorByBuyerRef,
+  persistActor: accountCoreStore.persistActor,
+  loadAuthAccount: accountCoreStore.loadAuthAccount,
+  persistAuthAccount: accountCoreStore.persistAuthAccount,
+  loadActorProfile: accountCoreStore.loadActorProfile,
+  persistActorProfile: accountCoreStore.persistActorProfile,
   now,
 });
 
@@ -117,9 +84,9 @@ const issueAuthSession = createIssueAuthSessionCommand({
 });
 
 const validateSession = createValidateSessionCommand({
-  loadActor: async (actorId) => actors.get(actorId) ?? null,
+  loadActor: accountCoreStore.loadActorById,
   loadAuthAccount: async (authAccountId) =>
-    authAccountId ? authAccounts.get(authAccountId) ?? null : null,
+    authAccountId ? accountCoreStore.loadAuthAccountById(authAccountId) : null,
   loadTrust: async (actorId, authAccountId) =>
     trusts.get(`${actorId}:${authAccountId ?? 'anon'}`) ?? null,
   persistSession: async (session) => {
@@ -276,11 +243,12 @@ export async function revokeHttpRuntimeSession(
 }
 
 export function resetHttpRuntimeState() {
-  actors.clear();
-  authAccounts.clear();
-  profiles.clear();
   sessions.clear();
   trusts.clear();
+}
+
+export function resetHttpRuntimeIdentityForTests() {
+  resetAccountCoreStoreForTests();
 }
 
 export function runtimeErrorResponse(error: unknown) {

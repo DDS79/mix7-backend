@@ -17,6 +17,7 @@
     "./session_issue_route.ts",
     "./debug_session_context_route.ts",
     "./backend_runtime_config.ts",
+    "./account_core_store.ts",
     "./events_route.ts",
     "./registrations_route.ts",
     "./tickets_route.ts",
@@ -31,6 +32,7 @@
     "./product_domain_anchors.ts",
     "./product_actor_auth_profile.ts",
     "./product_auth_session_identity_trust.ts",
+    "./db/*.ts",
     "./test_stubs/*.ts"
   ],
   "exclude": [

@@ -1,4 +1,7 @@
-import { resetHttpRuntimeState } from './http_runtime';
+import {
+  resetHttpRuntimeIdentityForTests,
+  resetHttpRuntimeState,
+} from './http_runtime';
 import { resetPaymentRuntimeStore } from './payment_runtime_store';
 import { handleApiRequest } from './server';
 import { resetEventRegistrationTicketStore } from './event_registration_ticket_store';
@@ -25,6 +28,7 @@ async function issueSession(buyerRef: string) {
 
 describe('registrations route', () => {
   beforeEach(() => {
+    resetHttpRuntimeIdentityForTests();
     resetHttpRuntimeState();
     resetPaymentRuntimeStore();
     resetEventRegistrationTicketStore();
