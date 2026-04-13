@@ -61,6 +61,7 @@ function buildAlertsFromPayload(payload, config) {
     for (const violation of payload.protocolViolations) {
       alerts.push(buildAlert({
         code: 'PROTOCOL_VIOLATION',
+        severity: violation.severity || ALERT_DEFINITIONS.PROTOCOL_VIOLATION.severity,
         subject: violation.message,
         evidence: violation.message,
       }));

@@ -28,6 +28,22 @@ test('protocol violations become critical alerts', () => {
   assert.equal(alerts[0].severity, 'critical');
 });
 
+test('untracked-only protocol violation is warning, not critical', () => {
+  const alerts = buildAlertsFromPayload({
+    reportDate: '2026-04-06',
+    protocolViolations: [{
+      type: 'working_tree_untracked',
+      severity: 'warning',
+      message: 'Есть untracked-файлы (2); это сигнал к разбору, но не critical без tracked-изменений.',
+    }],
+    inProgressTasks: [],
+  }, config);
+
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].code, 'PROTOCOL_VIOLATION');
+  assert.equal(alerts[0].severity, 'warning');
+});
+
 test('stuck task triggers without false positive on recent work', () => {
   const alerts = buildAlertsFromPayload({
     reportDate: '2026-04-06',

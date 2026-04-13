@@ -95,7 +95,7 @@ test('parseCommitLog attaches protocol metadata to commits', () => {
 });
 
 test('buildPayload derives protocol task states and violations deterministically', () => {
-  const payload = buildPayload('/Users/user/mix7-backend', '2026-03-28', require('../config.json'));
+  const payload = buildPayload(process.cwd(), '2026-03-28', require('../config.json'));
   assert.ok(Array.isArray(payload.completedTasks));
   assert.ok(Array.isArray(payload.inProgressTasks));
   assert.ok(Array.isArray(payload.blockedTasks));

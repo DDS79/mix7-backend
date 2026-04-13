@@ -342,11 +342,22 @@ function buildProtocolViolations(dayCommits, statusItems, config) {
     }
   }
 
-  const dirtyWithoutProtocol = statusItems.length > 0;
-  if (dirtyWithoutProtocol) {
+  const trackedItems = statusItems.filter((item) => item.tracked);
+  const untrackedItems = statusItems.filter((item) => !item.tracked);
+
+  if (trackedItems.length > 0) {
     violations.push({
-      type: 'working_tree',
-      message: 'Есть незакоммиченные изменения; до commit с MIX7-XXX система не может отнести их к реальной задаче.',
+      type: 'working_tree_tracked',
+      severity: 'critical',
+      message: `Есть незакоммиченные tracked-изменения (${trackedItems.length}); до protocol commit система не может отнести их к реальной задаче.`,
+    });
+  }
+
+  if (untrackedItems.length > 0) {
+    violations.push({
+      type: 'working_tree_untracked',
+      severity: 'warning',
+      message: `Есть untracked-файлы (${untrackedItems.length}); это сигнал к разбору, но не critical без tracked-изменений.`,
     });
   }
 
@@ -426,8 +437,12 @@ function buildRisks(signals, protocolViolations, longInProgress) {
     risks.push('Новые commits без MIX7-XXX или без lifecycle state разрушают автоматическое восстановление task state.');
   }
 
-  if (protocolViolations.some((item) => item.type === 'working_tree')) {
-    risks.push('Есть незакоммиченная работа вне протокола; пока нет commit с MIX7-XXX, система не видит её как задачу.');
+  if (protocolViolations.some((item) => item.type === 'working_tree_tracked')) {
+    risks.push('Есть незакоммиченная tracked-работа вне протокола; пока нет commit с MIX7-XXX, система не видит её как задачу.');
+  }
+
+  if (protocolViolations.some((item) => item.type === 'working_tree_untracked')) {
+    risks.push('Есть untracked-файлы вне protocol truth; нужен разбор, но это слабее, чем tracked-изменения.');
   }
 
   if (longInProgress.length > 0) {
@@ -537,15 +552,9 @@ function buildReportText(reportDate, payload, alerts, full) {
     lines.push('- Нет доказанных alert-class сигналов.');
   } else {
     lines.push(`- Всего сигналов: ${alertCount}`);
-    if (alerts.grouped.critical.length > 0) {
-      lines.push(`- Критические: ${alerts.grouped.critical.length}`);
-    }
-    if (alerts.grouped.high.length > 0) {
-      lines.push(`- Важные: ${alerts.grouped.high.length}`);
-    }
-    if (alerts.grouped.warning.length > 0) {
-      lines.push(`- Предупреждения: ${alerts.grouped.warning.length}`);
-    }
+    lines.push(`- Критические: ${alerts.grouped.critical.length}`);
+    lines.push(`- Важные: ${alerts.grouped.high.length}`);
+    lines.push(`- Предупреждения: ${alerts.grouped.warning.length}`);
     const topAlerts = alerts.alerts.slice(0, full ? alerts.alerts.length : 5);
     for (const alert of topAlerts) {
       lines.push(`- [${alert.code}] ${alert.subject}`);

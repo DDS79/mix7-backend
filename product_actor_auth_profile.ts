@@ -76,6 +76,21 @@ export const ACTOR_AUTH_PROFILE_BOUNDARY = {
   actorProfile: 'descriptive_profile_boundary',
 } as const;
 
+export const CANONICAL_ACCOUNT_DOMAIN_MODEL = {
+  canonicalAccountRoot: 'Actor',
+  canonicalAccountInvariant:
+    'one person maps to one backend Actor across site, registrations, tickets, payments, and linked clients',
+  linkedIdentityLayer: 'AuthAccount',
+  telegramRole: 'external_provider_auth_account_only',
+  actorOwnedSurfaces: [
+    'registrations',
+    'tickets',
+    'payments',
+  ],
+  botUserBoundary:
+    'bot-local users must not become an independent canonical identity owner',
+} as const;
+
 export const REGISTRATION_MODE_MODEL = {
   anonymous_allowed: {
     actorRequired: true,

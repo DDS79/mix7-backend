@@ -9,6 +9,7 @@ import {
 } from './product_domain_anchors';
 import {
   ACTOR_AUTH_PROFILE_BOUNDARY,
+  CANONICAL_ACCOUNT_DOMAIN_MODEL,
   FUTURE_SPECIALIZATION_ATTACH_POINTS,
   assertActorCanPerformAction,
   assertActorOwnsBundle,
@@ -339,6 +340,14 @@ describe('actor/auth/profile boundary', () => {
   it('future specialization attach points are explicit and stable', () => {
     expect(ACTOR_AUTH_PROFILE_BOUNDARY.actor).toBe(
       'product_subject_and_owner_truth',
+    );
+    expect(CANONICAL_ACCOUNT_DOMAIN_MODEL.canonicalAccountRoot).toBe('Actor');
+    expect(CANONICAL_ACCOUNT_DOMAIN_MODEL.linkedIdentityLayer).toBe('AuthAccount');
+    expect(CANONICAL_ACCOUNT_DOMAIN_MODEL.telegramRole).toBe(
+      'external_provider_auth_account_only',
+    );
+    expect(CANONICAL_ACCOUNT_DOMAIN_MODEL.actorOwnedSurfaces).toEqual(
+      expect.arrayContaining(['registrations', 'tickets', 'payments']),
     );
     expect(FUTURE_SPECIALIZATION_ATTACH_POINTS.Client).toContain('Actor');
     expect(FUTURE_SPECIALIZATION_ATTACH_POINTS.Resident).toContain('Actor');

@@ -9,10 +9,19 @@ Current operational domains may temporarily include `mix7.ru` and related subdom
 The current runtime core remains unchanged:
 
 - `Actor` = ownership truth
+- `Actor` = canonical MIX7 account root
+- `AuthAccount` = linked identity / login method layer
 - `AuthSession` = runtime access layer
 - `Order` = commercial truth
 - `Payment` = financial truth
 - `Entitlement` / `AccessGrant` = access truth anchors
+
+Canonical account ownership rule:
+
+- one person maps to one backend `Actor`
+- multiple login identities attach through `AuthAccount`
+- Telegram is an external linked identity, not the canonical account root
+- registrations, tickets, and payments remain actor-owned
 
 This repository now also contains a minimal domain-foundation layer for future club operating system growth. It introduces explicit first-class concepts without implementing a full rules engine:
 
