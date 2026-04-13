@@ -17,8 +17,11 @@ export default async function EventsPage() {
 
     return (
       <div className="stack">
-        {events.map((event) => (
-          <Card key={event.id}>
+        {events.map((event, index) => (
+          <Card
+            key={event.id}
+            className={`event-card event-card-${['gray', 'brown', 'olive'][index % 3]}`}
+          >
             <div className="stack">
               <div className="row">
                 <Badge tone={event.pricing.mode === 'free' ? 'success' : 'warning'}>

@@ -3,7 +3,13 @@
   --fg: #1b1713;
   --muted: #6a6158;
   --card: #fffdf8;
+  --card-gray: #f1efe9;
+  --card-brown: #f1e2d1;
+  --card-olive: #e7ead7;
   --border: #d6c7b4;
+  --border-gray: #c8c2b8;
+  --border-brown: #cda985;
+  --border-olive: #aeb78e;
   --accent: #c85a28;
   --accent-2: #2f6c61;
   --error: #9d2f2f;
@@ -54,6 +60,27 @@ a {
   border-radius: 18px;
   padding: 16px;
   box-shadow: 0 12px 28px rgba(47, 32, 20, 0.06);
+}
+
+.event-card-gray {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0)),
+    var(--card-gray);
+  border-color: var(--border-gray);
+}
+
+.event-card-brown {
+  background:
+    linear-gradient(180deg, rgba(255, 248, 240, 0.55), rgba(255, 248, 240, 0)),
+    var(--card-brown);
+  border-color: var(--border-brown);
+}
+
+.event-card-olive {
+  background:
+    linear-gradient(180deg, rgba(250, 252, 243, 0.55), rgba(250, 252, 243, 0)),
+    var(--card-olive);
+  border-color: var(--border-olive);
 }
 
 .stack {
