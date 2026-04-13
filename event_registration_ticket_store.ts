@@ -229,6 +229,34 @@ function buildTicketQrPayload(ticketId: string) {
   return `mix7:ticket:${ticketId}`;
 }
 
+function createIssuedTicket(args: {
+  ticketId: string;
+  actorId: string;
+  eventId: string;
+  registrationId: string;
+  orderId: string | null;
+}) {
+  return {
+    id: args.ticketId,
+    eventId: args.eventId,
+    actorId: args.actorId,
+    registrationId: args.registrationId,
+    orderId: args.orderId,
+    status: 'issued' as const,
+    accessClass: 'general' as const,
+    validFrom: eventsById.get(args.eventId)?.startsAt ?? null,
+    validTo: eventsById.get(args.eventId)?.endsAt ?? null,
+    accessCode: buildTicketAccessCode({
+      actorId: args.actorId,
+      eventId: args.eventId,
+      registrationId: args.registrationId,
+      occupiedCodes: listOccupiedAccessCodesForEvent(args.eventId),
+    }),
+    barcodeRef: buildTicketBarcodeRef(args.ticketId),
+    qrPayload: buildTicketQrPayload(args.ticketId),
+  };
+}
+
 function findEventBySlug(slug: string) {
   return eventsBySlug.get(slug) ?? null;
 }
@@ -314,7 +342,7 @@ export function getPublicEventDetail(slug: string) {
   };
 }
 
-export function createEventRegistration(args: {
+export async function createEventRegistration(args: {
   actorId: string;
   buyerId: string;
   eventSlug: string;
@@ -363,25 +391,13 @@ export function createEventRegistration(args: {
       checkoutOrderId: null,
       ticketId,
     };
-    const ticket: TicketRecord = {
-      id: ticketId,
-      eventId: event.id,
+    const ticket: TicketRecord = createIssuedTicket({
+      ticketId,
       actorId: args.actorId,
+      eventId: event.id,
       registrationId: registration.id,
       orderId: null,
-      status: 'issued',
-      accessClass: 'general',
-      validFrom: event.startsAt,
-      validTo: event.endsAt,
-      accessCode: buildTicketAccessCode({
-        actorId: args.actorId,
-        eventId: event.id,
-        registrationId: registration.id,
-        occupiedCodes: listOccupiedAccessCodesForEvent(event.id),
-      }),
-      barcodeRef: buildTicketBarcodeRef(ticketId),
-      qrPayload: buildTicketQrPayload(ticketId),
-    };
+    });
     registrations.set(registration.id, registration);
     tickets.set(ticket.id, ticket);
 
@@ -396,11 +412,14 @@ export function createEventRegistration(args: {
   }
 
   const orderId = buildOrderId(registrationId);
-  createRuntimeOrder({
+  await createRuntimeOrder({
     id: orderId,
+    actorId: args.actorId,
+    registrationId,
     buyerId: args.buyerId,
     eventId: event.id,
     totalMinor: event.priceMinor,
+    currency: event.currency,
   });
 
   const registration: RegistrationRecord = {
@@ -422,6 +441,92 @@ export function createEventRegistration(args: {
     nextAction: 'checkout' as const,
     orderId,
     ticket: null,
+    replayed: false,
+  };
+}
+
+export async function issuePaidTicketForSuccessfulOrder(args: {
+  orderId: string;
+  actorId: string;
+  registrationId: string;
+  eventId: string;
+  paidAt?: string;
+}) {
+  const registration = registrations.get(args.registrationId);
+  if (!registration) {
+    throw new EventRegistrationTicketError(
+      'REGISTRATION_NOT_FOUND',
+      'Registration not found for paid ticket issuance.',
+      404,
+    );
+  }
+
+  const event = eventsById.get(args.eventId);
+  if (!event) {
+    throw new EventRegistrationTicketError(
+      'EVENT_NOT_FOUND',
+      'Event not found for paid ticket issuance.',
+      404,
+    );
+  }
+
+  if (event.priceMinor === 0) {
+    throw new EventRegistrationTicketError(
+      'PAID_TICKET_ISSUANCE_NOT_APPLICABLE',
+      'Paid-ticket issuance is only valid for paid events.',
+      409,
+    );
+  }
+
+  if (registration.checkoutOrderId !== args.orderId) {
+    throw new EventRegistrationTicketError(
+      'ORDER_REGISTRATION_MISMATCH',
+      'Order does not match registration checkout anchor.',
+      409,
+    );
+  }
+
+  if (registration.actorId !== args.actorId || registration.eventId !== args.eventId) {
+    throw new EventRegistrationTicketError(
+      'REGISTRATION_OWNERSHIP_MISMATCH',
+      'Registration does not match the paid order ownership chain.',
+      409,
+    );
+  }
+
+  const existingTicket = registration.ticketId
+    ? (tickets.get(registration.ticketId) ?? null)
+    : null;
+  if (registration.ticketId && existingTicket) {
+    return {
+      registration,
+      ticket: existingTicket,
+      replayed: true,
+    };
+  }
+
+  const ticketId = buildTicketId(registration.id);
+  const ticket = createIssuedTicket({
+    ticketId,
+    actorId: args.actorId,
+    eventId: args.eventId,
+    registrationId: registration.id,
+    orderId: args.orderId,
+  });
+  const approvedAt = registration.approvedAt ?? args.paidAt ?? new Date().toISOString();
+  const approvedRegistration: RegistrationRecord = {
+    ...registration,
+    status: 'approved',
+    approvedAt,
+    ticketId: ticket.id,
+  };
+
+  registrations.set(approvedRegistration.id, approvedRegistration);
+  tickets.set(ticket.id, ticket);
+
+  return {
+    registration: approvedRegistration,
+    ticket,
     replayed: false,
   };
 }

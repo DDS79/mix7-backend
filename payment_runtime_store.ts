@@ -1,4 +1,12 @@
 import { hashRequest } from './test_stubs/idempotency';
+import { issuePaidTicketForSuccessfulOrder } from './event_registration_ticket_store';
+import {
+  paymentCoreStore,
+  resetPaymentCoreStoreForTests,
+  type RuntimeOrderRecord,
+  type RuntimePaymentCoreRecord,
+  normalizeRuntimeOrderInput,
+} from './payment_core_store';
 import {
   CheckoutPaymentConfirmDomainError,
   createConfirmPaymentCommand,
@@ -14,20 +22,14 @@ import {
   type PaymentRecord as IntentPaymentRecord,
 } from './payment_intent';
 
-type RuntimeOrder = {
-  id: string;
-  buyerId: string;
-  eventId: string;
-  totalMinor: number;
-  status: 'created' | 'pending_payment' | 'paid' | 'cancelled' | 'refunded' | 'failed';
-  paymentProvider: string | null;
-};
-
 export type CreateRuntimeOrderInput = {
   id: string;
+  actorId?: string;
+  registrationId?: string;
   buyerId: string;
   eventId: string;
   totalMinor: number;
+  currency?: string;
 };
 
 export class CheckoutOrderSourceError extends Error {
@@ -47,27 +49,60 @@ type RuntimeIdempotencyEntry<T> = {
   response: T | null;
 };
 
-const orders = new Map<string, RuntimeOrder>();
-const payments = new Map<string, ConfirmPaymentRecord>();
 const idempotency = new Map<string, RuntimeIdempotencyEntry<unknown>>();
+const paymentTransient = new Map<
+  string,
+  Pick<
+    ConfirmPaymentRecord,
+    | 'paymentMethod'
+    | 'providerStatus'
+    | 'lastProviderEventId'
+    | 'version'
+    | 'lastAppliedEventId'
+    | 'lastAppliedEventSequence'
+    | 'reconciliationState'
+  >
+>();
 
 function now() {
   return new Date();
 }
 
 export function resetPaymentRuntimeStore() {
-  orders.clear();
-  payments.clear();
+  resetPaymentCoreStoreForTests();
   idempotency.clear();
+  paymentTransient.clear();
 }
 
-export function seedRuntimeOrder(order: RuntimeOrder) {
-  orders.set(order.id, order);
-  return order;
+export async function seedRuntimeOrder(order: {
+  id: string;
+  buyerId: string;
+  eventId: string;
+  totalMinor: number;
+  status: 'pending_payment' | 'paid' | 'failed';
+  paymentProvider?: string | null;
+  actorId?: string;
+  registrationId?: string;
+  currency?: string;
+}) {
+  const nowIso = new Date().toISOString();
+  const normalized = normalizeRuntimeOrderInput(order);
+  const persisted = await paymentCoreStore.persistOrder({
+    ...normalized,
+    status: order.status,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  });
+  return {
+    ...persisted,
+    paymentProvider: order.paymentProvider ?? persisted.paymentProvider,
+  };
 }
 
-export function createRuntimeOrder(input: CreateRuntimeOrderInput): RuntimeOrder {
-  const existing = orders.get(input.id);
+export async function createRuntimeOrder(
+  input: CreateRuntimeOrderInput,
+): Promise<RuntimeOrderRecord> {
+  const existing = await paymentCoreStore.loadOrder(input.id, input.buyerId);
   if (existing) {
     throw new CheckoutOrderSourceError(
       'ORDER_ALREADY_EXISTS',
@@ -76,17 +111,15 @@ export function createRuntimeOrder(input: CreateRuntimeOrderInput): RuntimeOrder
     );
   }
 
-  const order: RuntimeOrder = {
-    id: input.id,
-    buyerId: input.buyerId,
-    eventId: input.eventId,
-    totalMinor: input.totalMinor,
-    status: 'pending_payment',
-    paymentProvider: null,
-  };
+  const normalized = normalizeRuntimeOrderInput(input);
+  const nowIso = now().toISOString();
 
-  orders.set(order.id, order);
-  return order;
+  return paymentCoreStore.persistOrder({
+    ...normalized,
+    status: 'pending_payment',
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  });
 }
 
 function getIdempotencyEntry<T>(
@@ -96,8 +129,50 @@ function getIdempotencyEntry<T>(
   return (idempotency.get(`${scope}:${key}`) as RuntimeIdempotencyEntry<T> | undefined) ?? null;
 }
 
-function setIdempotencyEntry<T>(scope: string, key: string, entry: RuntimeIdempotencyEntry<T>) {
+function setIdempotencyEntry<T>(
+  scope: string,
+  key: string,
+  entry: RuntimeIdempotencyEntry<T>,
+) {
   idempotency.set(`${scope}:${key}`, entry as RuntimeIdempotencyEntry<unknown>);
+}
+
+function deriveProviderStatus(
+  status: ConfirmPaymentRecord['status'],
+): ConfirmPaymentRecord['providerStatus'] {
+  if (status === 'succeeded') {
+    return 'succeeded';
+  }
+  if (status === 'failed') {
+    return 'failed';
+  }
+  return 'requires_action';
+}
+
+function mapCorePaymentToConfirmPayment(
+  payment: RuntimePaymentCoreRecord,
+): ConfirmPaymentRecord {
+  const transient = paymentTransient.get(payment.id);
+
+  return {
+    id: payment.id,
+    orderId: payment.orderId,
+    buyerId: payment.buyerId,
+    eventId: payment.eventId,
+    amount: payment.amount,
+    currency: payment.currency,
+    paymentMethod: transient?.paymentMethod ?? 'card',
+    provider: payment.provider,
+    status: payment.status,
+    intentId: payment.intentId ?? '',
+    providerPaymentId: payment.providerPaymentId ?? '',
+    providerStatus: transient?.providerStatus ?? deriveProviderStatus(payment.status),
+    lastProviderEventId: transient?.lastProviderEventId ?? null,
+    version: transient?.version ?? 0,
+    lastAppliedEventId: transient?.lastAppliedEventId ?? null,
+    lastAppliedEventSequence: transient?.lastAppliedEventSequence ?? null,
+    reconciliationState: transient?.reconciliationState ?? 'idle',
+  };
 }
 
 export async function runtimeInitiatePaymentIntent(
@@ -132,13 +207,8 @@ export async function runtimeInitiatePaymentIntent(
 
       return { kind: 'in_progress' };
     },
-    loadOrderForPayment: async (orderId, buyerId) => {
-      const order = orders.get(orderId);
-      if (!order || order.buyerId !== buyerId) {
-        return null;
-      }
-      return order;
-    },
+    loadOrderForPayment: async (orderId, buyerId) =>
+      paymentCoreStore.loadOrder(orderId, buyerId),
     bindPaymentProvider: async (order, provider) => {
       if (order.paymentProvider && order.paymentProvider !== provider) {
         throw new CheckoutPaymentIntentDomainError(
@@ -148,22 +218,21 @@ export async function runtimeInitiatePaymentIntent(
         );
       }
 
-      const next = {
-        ...order,
-        paymentProvider: provider,
-      };
-      orders.set(order.id, next);
+      await paymentCoreStore.updateOrderCurrency(order.id, input.currency);
+
       return provider;
     },
     loadCanonicalPayment: async (orderId) => {
-      for (const payment of payments.values()) {
-        if (payment.orderId === orderId) {
-          return payment as IntentPaymentRecord;
-        }
-      }
-      return null;
+      const payment = await paymentCoreStore.loadPaymentByOrderAny(orderId);
+      return payment ? (mapCorePaymentToConfirmPayment(payment) as IntentPaymentRecord) : null;
     },
-    createCanonicalPayment: async ({ order, provider, intentId, providerPaymentId, input: currentInput }) => {
+    createCanonicalPayment: async ({
+      order,
+      provider,
+      intentId,
+      providerPaymentId,
+      input: currentInput,
+    }) => {
       const payment: ConfirmPaymentRecord = {
         id: `pay_${hashRequest({ orderId: order.id, intentId }).slice(0, 24)}`,
         orderId: order.id,
@@ -183,7 +252,28 @@ export async function runtimeInitiatePaymentIntent(
         lastAppliedEventSequence: null,
         reconciliationState: 'idle',
       };
-      payments.set(payment.id, payment);
+
+      await paymentCoreStore.persistPayment({
+        id: payment.id,
+        orderId: payment.orderId,
+        provider: payment.provider,
+        providerPaymentId: payment.providerPaymentId,
+        intentId: payment.intentId,
+        status: payment.status as 'pending',
+        createdAt: now().toISOString(),
+        updatedAt: now().toISOString(),
+      });
+
+      paymentTransient.set(payment.id, {
+        paymentMethod: payment.paymentMethod,
+        providerStatus: payment.providerStatus,
+        lastProviderEventId: payment.lastProviderEventId,
+        version: payment.version,
+        lastAppliedEventId: payment.lastAppliedEventId,
+        lastAppliedEventSequence: payment.lastAppliedEventSequence,
+        reconciliationState: payment.reconciliationState,
+      });
+
       return payment as IntentPaymentRecord;
     },
     storeIdempotentResponse: async (currentInput, requestHash, result) => {
@@ -231,16 +321,15 @@ export async function runtimeConfirmPayment(
       return { kind: 'in_progress' };
     },
     loadPaymentForConfirmation: async (orderId, buyerId, paymentIntentId) => {
-      for (const payment of payments.values()) {
-        if (
-          payment.orderId === orderId &&
-          payment.buyerId === buyerId &&
-          payment.intentId === paymentIntentId
-        ) {
-          return payment;
-        }
+      const payment = await paymentCoreStore.loadPaymentByOrder(orderId, buyerId);
+      if (!payment) {
+        return null;
       }
-      return null;
+      const mapped = mapCorePaymentToConfirmPayment(payment);
+      if (mapped.intentId !== paymentIntentId) {
+        return null;
+      }
+      return mapped;
     },
     appendPaymentEvent: async () => undefined,
     storeIdempotentResponse: async (currentInput, requestHash, result) => {
@@ -253,4 +342,36 @@ export async function runtimeConfirmPayment(
   });
 
   return command(input);
+}
+
+export async function projectRuntimePaymentSuccess(args: { paymentId: string }) {
+  const payment = await paymentCoreStore.updatePaymentStatus(args.paymentId, 'succeeded');
+  if (!payment) {
+    return null;
+  }
+
+  const order = await paymentCoreStore.updateOrderStatus(payment.orderId, 'paid');
+  if (!order) {
+    throw new CheckoutPaymentConfirmDomainError(
+      'ORDER_NOT_FOUND',
+      'Order projection not found for successful payment.',
+      404,
+    );
+  }
+
+  const issuance = await issuePaidTicketForSuccessfulOrder({
+    orderId: order.id,
+    actorId: order.actorId,
+    registrationId: order.registrationId,
+    eventId: order.eventId,
+    paidAt: payment.updatedAt,
+  });
+
+  return {
+    payment,
+    order,
+    registration: issuance.registration,
+    ticket: issuance.ticket,
+    replayed: issuance.replayed,
+  };
 }

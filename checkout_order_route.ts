@@ -11,6 +11,13 @@ const requestSchema = z.object({
   orderId: z.string().uuid(),
   eventId: z.string().uuid(),
   totalMinor: z.number().int().positive(),
+  currency: z
+    .string()
+    .trim()
+    .length(3)
+    .regex(/^[A-Za-z]{3}$/)
+    .transform((value) => value.toUpperCase())
+    .optional(),
 });
 
 function errorResponse(
@@ -58,9 +65,11 @@ export async function POST(request: Request) {
       handler: async (context) =>
         createRuntimeOrder({
           id: parsed.data.orderId,
+          actorId: context.actor.id,
           buyerId: context.actor.buyerRef,
           eventId: parsed.data.eventId,
           totalMinor: parsed.data.totalMinor,
+          currency: parsed.data.currency,
         }),
       toResponse: (order) =>
         NextResponse.json(

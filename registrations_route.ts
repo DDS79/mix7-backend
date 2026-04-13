@@ -59,7 +59,7 @@ export async function POST(request: Request) {
       request,
       action: 'checkout_payment_intent',
       handler: async (context) =>
-        createEventRegistration({
+        await createEventRegistration({
           actorId: context.actor.id,
           buyerId: context.actor.buyerRef,
           eventSlug: parsed.data.eventSlug,
