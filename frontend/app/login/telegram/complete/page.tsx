@@ -37,6 +37,8 @@ export default function TelegramLoginCompletePage() {
           actorId: result.actorId,
           authAccountId: result.authAccountId,
           trustLevel: result.trustLevel,
+          sessionType: result.sessionType,
+          sessionStatus: result.sessionStatus,
         });
 
         if (active) {

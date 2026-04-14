@@ -49,6 +49,8 @@ export function useSessionBootstrap() {
           actorId: response.data.actorId,
           authAccountId: response.data.authAccountId,
           trustLevel: response.data.trustLevel,
+          sessionType: response.data.sessionType,
+          sessionStatus: response.data.sessionStatus,
         };
         writeSessionState(nextState);
 

@@ -6,10 +6,13 @@ export type RuntimeSessionState = {
   actorId: string;
   authAccountId: string;
   trustLevel: string;
+  sessionType?: string;
+  sessionStatus?: string;
 };
 
 const SESSION_STORAGE_KEY = 'mix7.phase1.session';
 const CHECKOUT_STORAGE_KEY = 'mix7.phase1.pendingCheckout';
+export const SESSION_STATE_CHANGED_EVENT = 'mix7:session-state-changed';
 
 export type PendingCheckoutContext = {
   orderId: string;
@@ -41,6 +44,9 @@ export function readSessionState(): RuntimeSessionState | null {
 
 export function writeSessionState(value: RuntimeSessionState) {
   getStorage()?.setItem(SESSION_STORAGE_KEY, JSON.stringify(value));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(SESSION_STATE_CHANGED_EVENT, { detail: value }));
+  }
 }
 
 export function readPendingCheckout(orderId: string): PendingCheckoutContext | null {
