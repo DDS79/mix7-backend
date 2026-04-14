@@ -16,6 +16,8 @@
     "./payment_core_store.ts",
     "./checkout_order_route.ts",
     "./session_issue_route.ts",
+    "./telegram_login_handoff_route.ts",
+    "./telegram_login_handoff_store.ts",
     "./debug_session_context_route.ts",
     "./backend_runtime_config.ts",
     "./account_core_store.ts",

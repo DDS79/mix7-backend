@@ -13,6 +13,11 @@ import { POST as postPaymentConfirm } from './payment_confirm_route';
 import { POST as postPaymentIntent } from './payment_intent_route';
 import { POST as postRegistrations } from './registrations_route';
 import { POST as postSessionIssue } from './session_issue_route';
+import {
+  POST_COMPLETE as postTelegramLoginHandoffComplete,
+  POST_CREATE as postTelegramLoginHandoffCreate,
+  POST_EXCHANGE as postTelegramLoginHandoffExchange,
+} from './telegram_login_handoff_route';
 import { GET as getTickets, GET_BY_ID as getTicketById } from './tickets_route';
 
 export const ALLOWED_CORS_ORIGINS = new Set(
@@ -53,6 +58,12 @@ function routeRequest(method: string, pathname: string): RouteHandler | null {
   if (method === 'POST' && pathname === '/session/issue') {
     return postSessionIssue;
   }
+  if (method === 'POST' && pathname === '/login/telegram/challenges') {
+    return postTelegramLoginHandoffCreate;
+  }
+  if (method === 'POST' && pathname === '/login/telegram/exchange') {
+    return postTelegramLoginHandoffExchange;
+  }
   if (method === 'GET' && pathname === '/events') {
     return getEvents;
   }
@@ -81,6 +92,18 @@ function routeRequest(method: string, pathname: string): RouteHandler | null {
       pathname === '/api/v1/checkout/orders/payment-confirm')
   ) {
     return postPaymentConfirm;
+  }
+  if (
+    method === 'POST' &&
+    pathname.startsWith('/login/telegram/challenges/') &&
+    pathname.endsWith('/complete')
+  ) {
+    const challengeId = pathname
+      .slice('/login/telegram/challenges/'.length, -'/complete'.length)
+      .trim();
+    if (challengeId) {
+      return async (request) => postTelegramLoginHandoffComplete(request, challengeId);
+    }
   }
   if (method === 'GET' && pathname.startsWith('/events/')) {
     const slug = pathname.slice('/events/'.length).trim();
