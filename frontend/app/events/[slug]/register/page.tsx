@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { createRegistration } from '@/features/registrations/api/registrations.api';
+import { useRuntimeSessionState } from '@/entities/session/hooks/useRuntimeSessionState';
 import { readSessionState } from '@/entities/session/lib/sessionStorage';
 import { resolveRegistrationNextAction } from '@/processes/registration/lib/resolveRegistrationNextAction';
 import { routes } from '@/shared/constants/routes';
@@ -15,10 +16,18 @@ import { ErrorState } from '@/shared/ui/ErrorState';
 export default function RegisterPage() {
   const router = useRouter();
   const params = useParams<{ slug: string }>();
+  const runtimeSession = useRuntimeSessionState();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const slug = Array.isArray(params.slug) ? params.slug[0] : params.slug;
+  const loginHref = slug ? routes.telegramLogin(routes.eventRegister(slug)) : routes.telegramLogin();
+  const currentSession = readSessionState() ?? runtimeSession;
+  const isAuthenticated = Boolean(
+    currentSession?.sessionId &&
+      currentSession.sessionType &&
+      currentSession.sessionType !== 'anonymous',
+  );
 
   async function onSubmit() {
     if (!slug) {
@@ -26,9 +35,9 @@ export default function RegisterPage() {
       return;
     }
 
-    const session = readSessionState();
-    if (!session?.sessionId) {
-      setError('Session is not ready yet.');
+    const session = readSessionState() ?? runtimeSession;
+    if (!session?.sessionId || !session.sessionType || session.sessionType === 'anonymous') {
+      setError('Login with Telegram to continue registration.');
       return;
     }
 
@@ -57,6 +66,11 @@ export default function RegisterPage() {
           </p>
         </div>
         {error ? <ErrorState title="Registration failed" message={error} /> : null}
+        {!isAuthenticated ? (
+          <Link className="button button-secondary" href={loginHref}>
+            Login with Telegram
+          </Link>
+        ) : null}
         <Button disabled={submitting} onClick={onSubmit}>
           {submitting ? 'Submitting…' : 'Submit registration'}
         </Button>
