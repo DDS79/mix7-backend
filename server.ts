@@ -19,6 +19,7 @@ import {
   POST_EXCHANGE as postTelegramLoginHandoffExchange,
 } from './telegram_login_handoff_route';
 import { GET as getTickets, GET_BY_ID as getTicketById } from './tickets_route';
+import { POST as postYookassaWebhook } from './yookassa_webhook_route';
 
 export const ALLOWED_CORS_ORIGINS = new Set(
   BACKEND_RUNTIME_CONFIG.effectiveAllowedWebOrigins,
@@ -57,6 +58,9 @@ function routeRequest(method: string, pathname: string): RouteHandler | null {
   }
   if (method === 'POST' && pathname === '/session/issue') {
     return postSessionIssue;
+  }
+  if (method === 'POST' && pathname === '/webhooks/yookassa') {
+    return postYookassaWebhook;
   }
   if (method === 'POST' && pathname === '/login/telegram/challenges') {
     return postTelegramLoginHandoffCreate;

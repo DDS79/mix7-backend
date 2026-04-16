@@ -21,6 +21,8 @@ import {
   type InitiatePaymentIntentResult,
   type PaymentRecord as IntentPaymentRecord,
 } from './payment_intent';
+import { createYookassaPayment } from './yookassa_provider';
+import { resolveCheckoutProvider } from './yookassa_config';
 
 export type CreateRuntimeOrderInput = {
   id: string;
@@ -175,6 +177,16 @@ function mapCorePaymentToConfirmPayment(
   };
 }
 
+function mapCorePaymentToIntentPayment(
+  payment: RuntimePaymentCoreRecord,
+): IntentPaymentRecord {
+  const mapped = mapCorePaymentToConfirmPayment(payment);
+  return {
+    ...mapped,
+    confirmationUrl: payment.confirmationUrl,
+  } as IntentPaymentRecord;
+}
+
 export async function runtimeInitiatePaymentIntent(
   input: InitiatePaymentIntentInput,
 ): Promise<InitiatePaymentIntentResult> {
@@ -224,13 +236,13 @@ export async function runtimeInitiatePaymentIntent(
     },
     loadCanonicalPayment: async (orderId) => {
       const payment = await paymentCoreStore.loadPaymentByOrderAny(orderId);
-      return payment ? (mapCorePaymentToConfirmPayment(payment) as IntentPaymentRecord) : null;
+      return payment ? mapCorePaymentToIntentPayment(payment) : null;
     },
     createCanonicalPayment: async ({
       order,
       provider,
       intentId,
-      providerPaymentId,
+      providerPaymentId: initialProviderPaymentId,
       input: currentInput,
     }) => {
       const payment: ConfirmPaymentRecord = {
@@ -244,7 +256,7 @@ export async function runtimeInitiatePaymentIntent(
         provider,
         status: 'pending',
         intentId,
-        providerPaymentId,
+        providerPaymentId: initialProviderPaymentId,
         providerStatus: 'requires_action',
         lastProviderEventId: null,
         version: 0,
@@ -253,12 +265,31 @@ export async function runtimeInitiatePaymentIntent(
         reconciliationState: 'idle',
       };
 
+      let providerPaymentId = payment.providerPaymentId;
+      let confirmationUrl: string | null = null;
+
+      if (provider === 'yookassa') {
+        const providerPayment = await createYookassaPayment({
+          idempotencyKey: currentInput.idempotencyKey,
+          orderId: order.id,
+          paymentId: payment.id,
+          actorId: order.actorId,
+          registrationId: order.registrationId,
+          eventId: order.eventId,
+          amountMinor: currentInput.amount,
+          currency: 'RUB',
+        });
+        providerPaymentId = providerPayment.providerPaymentId;
+        confirmationUrl = providerPayment.confirmationUrl;
+      }
+
       await paymentCoreStore.persistPayment({
         id: payment.id,
         orderId: payment.orderId,
         provider: payment.provider,
-        providerPaymentId: payment.providerPaymentId,
+        providerPaymentId,
         intentId: payment.intentId,
+        confirmationUrl,
         status: payment.status as 'pending',
         createdAt: now().toISOString(),
         updatedAt: now().toISOString(),
@@ -274,8 +305,32 @@ export async function runtimeInitiatePaymentIntent(
         reconciliationState: payment.reconciliationState,
       });
 
-      return payment as IntentPaymentRecord;
+      return {
+        ...payment,
+        providerPaymentId,
+        confirmationUrl,
+      } as IntentPaymentRecord;
     },
+    buildProviderPresentation: ({ payment }) =>
+      payment.provider === 'yookassa'
+        ? {
+            status: 'requires_action',
+            next_step: 'redirect_confirmation',
+            confirmation_url: payment.confirmationUrl ?? undefined,
+            handoff: undefined,
+          }
+        : {
+            status: 'requires_action',
+            next_step: 'payment_confirm',
+            handoff: {
+              kind: 'redirect_token',
+              token: `ptok_${hashRequest({
+                paymentId: payment.id,
+                intentId: payment.intentId,
+              }).slice(0, 24)}`,
+              redirect_path: `/checkout/pay/${payment.intentId}`,
+            },
+          },
     storeIdempotentResponse: async (currentInput, requestHash, result) => {
       setIdempotencyEntry('checkout_payment_intent', currentInput.idempotencyKey, {
         requestHash,
@@ -285,7 +340,31 @@ export async function runtimeInitiatePaymentIntent(
     now,
   });
 
-  return command(input);
+  return command({
+    ...input,
+    provider: input.provider ?? resolveCheckoutProvider(),
+  });
+}
+
+export async function runtimeHandleProviderPaymentSucceeded(args: {
+  provider: 'yookassa';
+  providerPaymentId: string;
+}) {
+  const payment = await paymentCoreStore.loadPaymentByProviderPaymentId(
+    args.provider,
+    args.providerPaymentId,
+  );
+  if (!payment) {
+    throw new CheckoutPaymentConfirmDomainError(
+      'WEBHOOK_MAPPING_FAILED',
+      'Provider payment could not be mapped to a canonical payment.',
+      404,
+    );
+  }
+
+  return projectRuntimePaymentSuccess({
+    paymentId: payment.id,
+  });
 }
 
 export async function runtimeConfirmPayment(

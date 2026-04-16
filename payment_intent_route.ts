@@ -26,7 +26,7 @@ const requestSchema = z.object({
     .regex(/^[A-Za-z]{3}$/, 'currency must be a valid ISO code')
     .transform((value) => value.toUpperCase()),
   paymentMethod: z.enum(['card', 'bank_transfer', 'wallet']),
-  provider: z.enum(['stub']).optional(),
+  provider: z.enum(['stub', 'yookassa']).optional(),
   idempotencyKey: z.string().min(1).max(128).optional(),
 });
 

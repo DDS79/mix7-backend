@@ -91,7 +91,7 @@ describe('paid ticket issuance boundary', () => {
 
     expect(registration.response.status).toBe(201);
     expect(registration.json.data.nextAction).toBe('checkout');
-    expect(registration.json.data.ticket).toBeNull();
+    expect(registration.json.data.ticket).toBeUndefined();
 
     const beforeTickets = await listOwnedTickets(session.data.sessionId);
     expect(beforeTickets.response.status).toBe(200);

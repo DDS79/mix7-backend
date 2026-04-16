@@ -27,6 +27,9 @@ module.exports = {
     '<rootDir>/backend_runtime_config.test.ts',
     '<rootDir>/session_issue_route.test.ts',
     '<rootDir>/debug_session_context_route.test.ts',
+    '<rootDir>/paid_ticket_issuance.test.ts',
+    '<rootDir>/telegram_login_handoff_route.test.ts',
+    '<rootDir>/yookassa_integration.test.ts',
   ],
   moduleNameMapper: {
     '^@/modules/checkout/payment_intent$': '<rootDir>/payment_intent.ts',

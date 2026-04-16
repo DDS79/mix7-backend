@@ -138,6 +138,10 @@ export default function CheckoutPage() {
         amount: activeCheckout.totalMinor,
         currency: activeCheckout.currency,
       });
+      if (result.payment_intent.confirmation_url) {
+        window.location.href = result.payment_intent.confirmation_url;
+        return;
+      }
       setIntent(result);
       setLoading('idle');
     } catch (nextError) {

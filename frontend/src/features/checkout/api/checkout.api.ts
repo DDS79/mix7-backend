@@ -14,7 +14,8 @@ export type PaymentIntentResponse = {
     provider_payment_id: string;
     next_step: string;
     expires_at: string;
-    handoff: {
+    confirmation_url?: string;
+    handoff?: {
       kind: string;
       token: string;
       redirect_path: string;

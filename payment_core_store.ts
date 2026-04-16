@@ -25,9 +25,10 @@ export type RuntimePaymentCoreRecord = {
   eventId: string;
   amount: number;
   currency: string;
-  provider: 'stub';
+  provider: 'stub' | 'yookassa';
   providerPaymentId: string | null;
   intentId: string | null;
+  confirmationUrl: string | null;
   status: RuntimePaymentStatus;
   createdAt: string;
   updatedAt: string;
@@ -49,9 +50,10 @@ export type PersistOrderInput = {
 export type PersistPaymentInput = {
   id: string;
   orderId: string;
-  provider: 'stub';
-  providerPaymentId: string;
-  intentId: string;
+  provider: 'stub' | 'yookassa';
+  providerPaymentId: string | null;
+  intentId: string | null;
+  confirmationUrl: string | null;
   status: RuntimePaymentStatus;
   createdAt: string;
   updatedAt: string;
@@ -82,10 +84,19 @@ type PaymentCoreStore = {
   loadPaymentByOrderAny: (
     orderId: string,
   ) => Promise<RuntimePaymentCoreRecord | null>;
+  loadPaymentByProviderPaymentId: (
+    provider: 'stub' | 'yookassa',
+    providerPaymentId: string,
+  ) => Promise<RuntimePaymentCoreRecord | null>;
   updatePaymentStatus: (
     paymentId: string,
     status: RuntimePaymentStatus,
   ) => Promise<RuntimePaymentCoreRecord | null>;
+  updatePaymentProviderLink: (args: {
+    paymentId: string;
+    providerPaymentId: string;
+    confirmationUrl: string | null;
+  }) => Promise<RuntimePaymentCoreRecord | null>;
 };
 
 type OrderRow = {
@@ -105,9 +116,10 @@ type OrderRow = {
 type PaymentRow = {
   id: string;
   order_id: string;
-  provider: 'stub';
+  provider: 'stub' | 'yookassa';
   provider_payment_id: string | null;
   intent_id: string | null;
+  confirmation_url: string | null;
   status: RuntimePaymentStatus;
   created_at: Date | string;
   updated_at: Date | string;
@@ -148,6 +160,7 @@ function mapPaymentRow(row: PaymentRow): RuntimePaymentCoreRecord {
     provider: row.provider,
     providerPaymentId: row.provider_payment_id,
     intentId: row.intent_id,
+    confirmationUrl: row.confirmation_url,
     status: row.status,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
@@ -241,6 +254,7 @@ function createMemoryPaymentCoreStore(): PaymentCoreStore & {
         provider: payment.provider,
         providerPaymentId: payment.providerPaymentId,
         intentId: payment.intentId,
+        confirmationUrl: payment.confirmationUrl,
         status: payment.status,
         createdAt: payment.createdAt,
         updatedAt: payment.updatedAt,
@@ -268,6 +282,17 @@ function createMemoryPaymentCoreStore(): PaymentCoreStore & {
       }
       return null;
     },
+    loadPaymentByProviderPaymentId: async (provider, providerPaymentId) => {
+      for (const payment of payments.values()) {
+        if (
+          payment.provider === provider &&
+          payment.providerPaymentId === providerPaymentId
+        ) {
+          return payment;
+        }
+      }
+      return null;
+    },
     updatePaymentStatus: async (paymentId, status) => {
       const payment = payments.get(paymentId);
       if (!payment) {
@@ -276,6 +301,24 @@ function createMemoryPaymentCoreStore(): PaymentCoreStore & {
       const next = {
         ...payment,
         status,
+        updatedAt: new Date().toISOString(),
+      };
+      payments.set(paymentId, next);
+      return next;
+    },
+    updatePaymentProviderLink: async ({
+      paymentId,
+      providerPaymentId,
+      confirmationUrl,
+    }) => {
+      const payment = payments.get(paymentId);
+      if (!payment) {
+        return null;
+      }
+      const next = {
+        ...payment,
+        providerPaymentId,
+        confirmationUrl,
         updatedAt: new Date().toISOString(),
       };
       payments.set(paymentId, next);
@@ -314,6 +357,7 @@ function selectPaymentSql(whereClause: string) {
     p.provider,
     p.provider_payment_id,
     p.intent_id,
+    p.confirmation_url,
     p.status,
     p.created_at,
     p.updated_at,
@@ -408,15 +452,16 @@ function createPostgresPaymentCoreStore(): PaymentCoreStore {
       withDbTransaction(async (client) => {
         await client.query(
           `INSERT INTO payments (
-             id, order_id, provider, provider_payment_id, intent_id, status, created_at, updated_at
+             id, order_id, provider, provider_payment_id, intent_id, confirmation_url, status, created_at, updated_at
            )
-           VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8::timestamptz)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz, $9::timestamptz)`,
           [
             payment.id,
             payment.orderId,
             payment.provider,
             payment.providerPaymentId,
             payment.intentId,
+            payment.confirmationUrl,
             payment.status,
             payment.createdAt,
             payment.updatedAt,
@@ -446,6 +491,15 @@ function createPostgresPaymentCoreStore(): PaymentCoreStore {
       );
       return result.rows[0] ? mapPaymentRow(result.rows[0]) : null;
     },
+    loadPaymentByProviderPaymentId: async (provider, providerPaymentId) => {
+      const result = await dbQuery<PaymentRow>(
+        `${selectPaymentSql('WHERE p.provider = $1 AND p.provider_payment_id = $2')}
+         ORDER BY p.created_at ASC
+         LIMIT 1`,
+        [provider, providerPaymentId],
+      );
+      return result.rows[0] ? mapPaymentRow(result.rows[0]) : null;
+    },
     updatePaymentStatus: async (paymentId, status) =>
       withDbTransaction(async (client) => {
         const updated = await client.query(
@@ -454,6 +508,30 @@ function createPostgresPaymentCoreStore(): PaymentCoreStore {
            WHERE id = $1
            RETURNING id`,
           [paymentId, status],
+        );
+        if (updated.rowCount === 0) {
+          return null;
+        }
+        const fresh = await client.query<PaymentRow>(
+          selectPaymentSql('WHERE p.id = $1'),
+          [paymentId],
+        );
+        return fresh.rows[0] ? mapPaymentRow(fresh.rows[0]) : null;
+      }),
+    updatePaymentProviderLink: async ({
+      paymentId,
+      providerPaymentId,
+      confirmationUrl,
+    }) =>
+      withDbTransaction(async (client) => {
+        const updated = await client.query(
+          `UPDATE payments
+           SET provider_payment_id = $2,
+               confirmation_url = $3,
+               updated_at = now()
+           WHERE id = $1
+           RETURNING id`,
+          [paymentId, providerPaymentId, confirmationUrl],
         );
         if (updated.rowCount === 0) {
           return null;

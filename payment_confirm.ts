@@ -42,7 +42,7 @@ export type PaymentRecord = {
   amount: number;
   currency: string;
   paymentMethod: 'card' | 'bank_transfer' | 'wallet';
-  provider: 'stub';
+  provider: 'stub' | 'yookassa';
   status: PaymentFinancialState;
   intentId: string;
   providerPaymentId: string;
@@ -59,7 +59,7 @@ export type ConfirmPaymentInput = {
   orderId: string;
   paymentIntentId: string;
   idempotencyKey: string;
-  provider?: 'stub';
+  provider?: 'stub' | 'yookassa';
 };
 
 export type ConfirmPaymentResult = {
@@ -70,7 +70,7 @@ export type ConfirmPaymentResult = {
   total_minor: number;
   status: 'pending_payment';
   payment_confirmation: {
-    provider: 'stub';
+    provider: 'stub' | 'yookassa';
     intent_id: string;
     provider_payment_id: string;
     status: 'pending_provider_confirmation';
@@ -81,7 +81,7 @@ export type ConfirmPaymentResult = {
 
 export type ProviderEvent = {
   eventId: string;
-  provider: 'stub';
+  provider: 'stub' | 'yookassa';
   providerPaymentId: string;
   paymentIntentId: string;
   providerStatus: 'requires_action' | 'succeeded' | 'failed';
@@ -230,7 +230,10 @@ function ensurePaymentIntentIdFormat(paymentIntentId: string) {
   }
 }
 
-function ensurePaymentCanRequestConfirmation(payment: PaymentRecord, provider: 'stub') {
+function ensurePaymentCanRequestConfirmation(
+  payment: PaymentRecord,
+  provider: 'stub' | 'yookassa',
+) {
   if (payment.provider !== provider) {
     throw new CheckoutPaymentConfirmDomainError(
       'PAYMENT_PROVIDER_MISMATCH',

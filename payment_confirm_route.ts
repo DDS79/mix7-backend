@@ -11,7 +11,7 @@ const requestSchema = z.object({
   buyerId: z.string().uuid().optional(),
   orderId: z.string().uuid(),
   paymentIntentId: z.string().min(1).max(140),
-  provider: z.enum(['stub']).optional(),
+  provider: z.enum(['stub', 'yookassa']).optional(),
   idempotencyKey: z.string().min(1).max(128).optional(),
 });
 

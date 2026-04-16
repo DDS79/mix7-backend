@@ -22,7 +22,7 @@ export type InitiatePaymentIntentInput = {
   currency: string;
   paymentMethod: 'card' | 'bank_transfer' | 'wallet';
   idempotencyKey: string;
-  provider?: 'stub';
+  provider?: 'stub' | 'yookassa';
 };
 
 export type PaymentRecord = {
@@ -33,10 +33,11 @@ export type PaymentRecord = {
   amount: number;
   currency: string;
   paymentMethod: 'card' | 'bank_transfer' | 'wallet';
-  provider: 'stub';
+  provider: 'stub' | 'yookassa';
   status: 'pending' | 'provider_confirmed' | 'succeeded' | 'failed';
   intentId: string;
   providerPaymentId: string;
+  confirmationUrl?: string | null;
   providerStatus: 'requires_action' | 'succeeded' | 'failed';
   lastProviderEventId: string | null;
 };
@@ -49,13 +50,14 @@ export type InitiatePaymentIntentResult = {
   total_minor: number;
   status: 'pending_payment';
   payment_intent: {
-    provider: 'stub';
+    provider: 'stub' | 'yookassa';
     status: 'requires_action';
     intent_id: string;
     provider_payment_id: string;
-    next_step: 'payment_confirm';
+    next_step: 'payment_confirm' | 'redirect_confirmation';
     expires_at: string;
-    handoff: {
+    confirmation_url?: string;
+    handoff?: {
       kind: 'redirect_token';
       token: string;
       redirect_path: string;
@@ -65,6 +67,8 @@ export type InitiatePaymentIntentResult = {
 
 type OrderPaymentRecord = {
   id: string;
+  actorId: string;
+  registrationId: string;
   buyerId: string;
   eventId: string;
   totalMinor: number;
@@ -88,16 +92,23 @@ type InitiatePaymentIntentDeps = {
   ) => Promise<OrderPaymentRecord | null>;
   bindPaymentProvider: (
     order: OrderPaymentRecord,
-    provider: 'stub',
-  ) => Promise<'stub'>;
+    provider: 'stub' | 'yookassa',
+  ) => Promise<'stub' | 'yookassa'>;
   loadCanonicalPayment: (orderId: string) => Promise<PaymentRecord | null>;
   createCanonicalPayment: (args: {
-    order: OrderPaymentRecord;
-    provider: 'stub';
-    intentId: string;
-    providerPaymentId: string;
-    input: InitiatePaymentIntentInput;
-  }) => Promise<PaymentRecord>;
+      order: OrderPaymentRecord;
+      provider: 'stub' | 'yookassa';
+      intentId: string;
+      providerPaymentId: string;
+      input: InitiatePaymentIntentInput;
+    }) => Promise<PaymentRecord>;
+  buildProviderPresentation?: (args: {
+    payment: PaymentRecord;
+    now: Date;
+  }) => Pick<
+    InitiatePaymentIntentResult['payment_intent'],
+    'status' | 'next_step' | 'confirmation_url' | 'handoff'
+  >;
   storeIdempotentResponse: (
     input: InitiatePaymentIntentInput,
     requestHash: string,
@@ -159,7 +170,7 @@ function ensureInputMatchesOrder(
 function ensurePaymentMatchesInput(
   payment: PaymentRecord,
   input: InitiatePaymentIntentInput,
-  provider: 'stub',
+  provider: 'stub' | 'yookassa',
 ) {
   if (payment.orderId !== input.orderId || payment.buyerId !== input.buyerId) {
     throw new CheckoutPaymentIntentDomainError(
@@ -191,7 +202,11 @@ function ensurePaymentMatchesInput(
   }
 }
 
-function buildIntentId(orderId: string, requestHash: string, provider: 'stub') {
+function buildIntentId(
+  orderId: string,
+  requestHash: string,
+  provider: 'stub' | 'yookassa',
+) {
   const seed = hashRequest({
     orderId,
     provider,
@@ -208,6 +223,10 @@ function buildProviderPaymentId(intentId: string) {
 function buildPaymentIntentResult(args: {
   payment: PaymentRecord;
   now: Date;
+  presentation?: Pick<
+    InitiatePaymentIntentResult['payment_intent'],
+    'status' | 'next_step' | 'confirmation_url' | 'handoff'
+  >;
 }): InitiatePaymentIntentResult {
   const tokenSeed = hashRequest({
     paymentId: args.payment.id,
@@ -223,16 +242,25 @@ function buildPaymentIntentResult(args: {
     status: 'pending_payment',
     payment_intent: {
       provider: args.payment.provider,
-      status: 'requires_action',
+      status: args.presentation?.status ?? 'requires_action',
       intent_id: args.payment.intentId,
       provider_payment_id: args.payment.providerPaymentId,
-      next_step: 'payment_confirm',
+      next_step: args.presentation?.next_step ?? 'payment_confirm',
       expires_at: new Date(args.now.getTime() + PAYMENT_INTENT_TTL_MS).toISOString(),
-      handoff: {
-        kind: 'redirect_token',
-        token: `ptok_${tokenSeed.slice(0, 24)}`,
-        redirect_path: `/checkout/pay/${args.payment.intentId}`,
-      },
+      ...(args.presentation?.confirmation_url
+        ? {
+            confirmation_url: args.presentation.confirmation_url,
+          }
+        : {}),
+      ...(args.presentation?.handoff
+        ? { handoff: args.presentation.handoff }
+        : {
+            handoff: {
+              kind: 'redirect_token',
+              token: `ptok_${tokenSeed.slice(0, 24)}`,
+              redirect_path: `/checkout/pay/${args.payment.intentId}`,
+            },
+          }),
     },
   };
 }
@@ -298,6 +326,10 @@ export function createInitiatePaymentIntentCommand(deps: InitiatePaymentIntentDe
     const result = buildPaymentIntentResult({
       payment,
       now: deps.now(),
+      presentation: deps.buildProviderPresentation?.({
+        payment,
+        now: deps.now(),
+      }),
     });
 
     await deps.storeIdempotentResponse(input, requestHash, result);
