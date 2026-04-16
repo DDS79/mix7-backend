@@ -147,6 +147,12 @@ export async function POST(request: Request) {
       500,
       'INTERNAL_SERVER_ERROR',
       'Unexpected registration error.',
+      [
+        {
+          field: 'runtime',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        },
+      ],
     );
   }
 }
