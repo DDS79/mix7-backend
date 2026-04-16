@@ -6,6 +6,7 @@ import {
   createEventRegistration,
 } from './event_registration_ticket_store';
 import { withRuntimeActorContext } from './http_session_middleware';
+import { SESSION_ID_HEADER } from './http_runtime';
 
 const requestSchema = z.object({
   eventSlug: z
@@ -46,7 +47,28 @@ function validationErrorResponse(error: z.ZodError) {
   );
 }
 
+function truncateSessionId(sessionId: string | null) {
+  if (!sessionId) {
+    return null;
+  }
+
+  if (sessionId.length <= 20) {
+    return sessionId;
+  }
+
+  return `${sessionId.slice(0, 8)}...${sessionId.slice(-8)}`;
+}
+
 export async function POST(request: Request) {
+  const diagnosticContext: {
+    eventSlug?: string;
+    actorId?: string;
+    sessionId?: string | null;
+    orderId?: string | null;
+  } = {
+    sessionId: truncateSessionId(request.headers.get(SESSION_ID_HEADER)?.trim() ?? null),
+  };
+
   try {
     const rawBody = await request.json().catch(() => ({}));
     const parsed = requestSchema.safeParse(rawBody);
@@ -55,15 +77,21 @@ export async function POST(request: Request) {
       return validationErrorResponse(parsed.error);
     }
 
+    diagnosticContext.eventSlug = parsed.data.eventSlug;
+
     return await withRuntimeActorContext({
       request,
       action: 'checkout_payment_intent',
-      handler: async (context) =>
-        await createEventRegistration({
+      handler: async (context) => {
+        diagnosticContext.actorId = context.actor.id;
+        const result = await createEventRegistration({
           actorId: context.actor.id,
           buyerId: context.actor.buyerRef,
           eventSlug: parsed.data.eventSlug,
-        }),
+        });
+        diagnosticContext.orderId = result.orderId;
+        return result;
+      },
       toResponse: (result) =>
         NextResponse.json(
           {
@@ -97,6 +125,20 @@ export async function POST(request: Request) {
         ),
     });
   } catch (error) {
+    // Temporary diagnostic instrumentation for production paid-registration debugging.
+    console.error(
+      JSON.stringify({
+        scope: 'registrations_route',
+        phase: 'unexpected_error',
+        eventSlug: diagnosticContext.eventSlug ?? null,
+        actorId: diagnosticContext.actorId ?? null,
+        sessionId: diagnosticContext.sessionId ?? null,
+        orderId: diagnosticContext.orderId ?? null,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack ?? null : null,
+      }),
+    );
+
     if (error instanceof EventRegistrationTicketError) {
       return errorResponse(error.status, error.code, error.message);
     }
