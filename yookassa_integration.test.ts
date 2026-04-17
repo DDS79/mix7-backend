@@ -3,6 +3,7 @@ import {
   resetHttpRuntimeState,
 } from './http_runtime';
 import { paymentCoreStore } from './payment_core_store';
+import { registrationTicketCoreStore } from './registration_ticket_core_store';
 import { resetPaymentRuntimeStore } from './payment_runtime_store';
 import { handleApiRequest } from './server';
 import { resetEventRegistrationTicketStore } from './event_registration_ticket_store';
@@ -107,6 +108,13 @@ describe('yookassa minimal provider integration', () => {
     expect(registration.response.status).toBe(201);
     expect(registration.json.data.nextAction).toBe('checkout');
 
+    const persistedRegistration = await registrationTicketCoreStore.loadRegistrationByOrderId(
+      registration.json.data.checkout.orderId,
+    );
+    expect(persistedRegistration).not.toBeNull();
+    expect(persistedRegistration?.status).toBe('requested');
+    expect(persistedRegistration?.checkoutOrderId).toBe(registration.json.data.checkout.orderId);
+
     const intentResponse = await handleApiRequest(
       new Request('http://render.local/checkout/payment-intent', {
         method: 'POST',
@@ -168,6 +176,13 @@ describe('yookassa minimal provider integration', () => {
     expect(firstWebhookJson.data.ticketId).toMatch(/^tkt_/);
     expect(firstWebhookJson.data.replayed).toBe(false);
 
+    const persistedTicket = await registrationTicketCoreStore.loadTicketByRegistrationId(
+      persistedRegistration!.id,
+    );
+    expect(persistedTicket).not.toBeNull();
+    expect(persistedTicket?.id).toBe(firstWebhookJson.data.ticketId);
+    expect(persistedTicket?.orderId).toBe(registration.json.data.checkout.orderId);
+
     const afterFirstWebhook = await listOwnedTickets(session.data.sessionId);
     expect(afterFirstWebhook.json.data.tickets).toHaveLength(1);
 
@@ -191,6 +206,11 @@ describe('yookassa minimal provider integration', () => {
 
     expect(secondWebhookResponse.status).toBe(200);
     expect(secondWebhookJson.data.replayed).toBe(true);
+
+    const persistedTicketAfterReplay = await registrationTicketCoreStore.loadTicketByRegistrationId(
+      persistedRegistration!.id,
+    );
+    expect(persistedTicketAfterReplay?.id).toBe(firstWebhookJson.data.ticketId);
 
     const afterSecondWebhook = await listOwnedTickets(session.data.sessionId);
     expect(afterSecondWebhook.json.data.tickets).toHaveLength(1);

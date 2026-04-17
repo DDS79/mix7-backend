@@ -3,6 +3,7 @@ import {
   resetHttpRuntimeState,
 } from './http_runtime';
 import { resetPaymentRuntimeStore } from './payment_runtime_store';
+import { registrationTicketCoreStore } from './registration_ticket_core_store';
 import { handleApiRequest } from './server';
 import { resetEventRegistrationTicketStore } from './event_registration_ticket_store';
 
@@ -75,6 +76,13 @@ describe('registrations route', () => {
     expect(json.data.nextAction).toBe('checkout');
     expect(json.data.checkout.orderId).toMatch(/^ord_/);
     expect(json.data.checkout.totalMinor).toBe(2500);
+
+    const persistedRegistration = await registrationTicketCoreStore.loadRegistrationByOrderId(
+      json.data.checkout.orderId,
+    );
+    expect(persistedRegistration).not.toBeNull();
+    expect(persistedRegistration?.status).toBe('requested');
+    expect(persistedRegistration?.eventId).toBe(json.data.eventId);
   });
 
   it('replays deterministic registration state for duplicate actor-event request', async () => {

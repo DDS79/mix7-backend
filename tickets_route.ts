@@ -25,7 +25,7 @@ export async function GET_BY_ID(request: Request, ticketId: string) {
       request,
       action: 'checkout_payment_intent',
       handler: async (context) =>
-        getOwnedTicket({
+        await getOwnedTicket({
           actorId: context.actor.id,
           ticketId,
         }),
@@ -54,7 +54,7 @@ export async function GET(request: Request) {
       request,
       action: 'checkout_payment_intent',
       handler: async (context) =>
-        listOwnedTickets({
+        await listOwnedTickets({
           actorId: context.actor.id,
         }),
       toResponse: (tickets) =>

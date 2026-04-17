@@ -1,5 +1,9 @@
 import { hashRequest } from './test_stubs/idempotency';
 import { createRuntimeOrder } from './payment_runtime_store';
+import {
+  registrationTicketCoreStore,
+  resetRegistrationTicketCoreStoreForTests,
+} from './registration_ticket_core_store';
 import type {
   Event,
   EventCategory,
@@ -123,8 +127,6 @@ const categories = new Map<string, EventCategory>();
 const characteristics = new Map<string, EventCharacteristic>();
 const eventsById = new Map<string, EventRecord>();
 const eventsBySlug = new Map<string, EventRecord>();
-const registrations = new Map<string, RegistrationRecord>();
-const tickets = new Map<string, TicketRecord>();
 
 function seedDefaults() {
   categories.clear();
@@ -145,8 +147,7 @@ function seedDefaults() {
 }
 
 export function resetEventRegistrationTicketStore() {
-  registrations.clear();
-  tickets.clear();
+  resetRegistrationTicketCoreStoreForTests();
   seedDefaults();
 }
 
@@ -185,21 +186,13 @@ function buildTicketAccessCodeCandidate(args: {
   return String(value).padStart(ACCESS_CODE_LENGTH, '0');
 }
 
-function listOccupiedAccessCodesForEvent(eventId: string) {
-  return new Set(
-    Array.from(tickets.values())
-      .filter((ticket) => ticket.eventId === eventId)
-      .map((ticket) => ticket.accessCode),
-  );
-}
-
 export function buildTicketAccessCode(args: {
   actorId: string;
   eventId: string;
   registrationId: string;
   occupiedCodes?: ReadonlySet<string>;
 }) {
-  const occupiedCodes = args.occupiedCodes ?? listOccupiedAccessCodesForEvent(args.eventId);
+  const occupiedCodes = args.occupiedCodes ?? new Set<string>();
 
   for (let attempt = 0; attempt < ACCESS_CODE_SPACE; attempt += 1) {
     const candidate = buildTicketAccessCodeCandidate({
@@ -229,13 +222,15 @@ function buildTicketQrPayload(ticketId: string) {
   return `mix7:ticket:${ticketId}`;
 }
 
-function createIssuedTicket(args: {
+async function createIssuedTicket(args: {
   ticketId: string;
   actorId: string;
   eventId: string;
   registrationId: string;
   orderId: string | null;
 }) {
+  const occupiedCodes = await registrationTicketCoreStore.listTicketAccessCodesByEvent(args.eventId);
+
   return {
     id: args.ticketId,
     eventId: args.eventId,
@@ -250,7 +245,7 @@ function createIssuedTicket(args: {
       actorId: args.actorId,
       eventId: args.eventId,
       registrationId: args.registrationId,
-      occupiedCodes: listOccupiedAccessCodesForEvent(args.eventId),
+      occupiedCodes,
     }),
     barcodeRef: buildTicketBarcodeRef(args.ticketId),
     qrPayload: buildTicketQrPayload(args.ticketId),
@@ -381,10 +376,10 @@ export async function createEventRegistration(args: {
   });
 
   const registrationId = buildRegistrationId(args.actorId, event.id);
-  const existing = registrations.get(registrationId);
+  const existing = await registrationTicketCoreStore.loadRegistrationById(registrationId);
   if (existing) {
     const existingTicket = existing.ticketId
-      ? (tickets.get(existing.ticketId) ?? null)
+      ? await registrationTicketCoreStore.loadTicketById(existing.ticketId)
       : null;
     return {
       registration: existing,
@@ -399,26 +394,32 @@ export async function createEventRegistration(args: {
 
   if (event.priceMinor === 0) {
     const ticketId = buildTicketId(registrationId);
-    const registration: RegistrationRecord = {
+    const createdAt = now.toISOString();
+    const registration = await registrationTicketCoreStore.persistRegistration({
       id: registrationId,
       actorId: args.actorId,
       eventId: event.id,
       sourceType: 'manual',
       status: 'approved',
-      requestedAt: now.toISOString(),
-      approvedAt: now.toISOString(),
+      requestedAt: createdAt,
+      approvedAt: createdAt,
       checkoutOrderId: null,
       ticketId,
-    };
-    const ticket: TicketRecord = createIssuedTicket({
+      createdAt,
+      updatedAt: createdAt,
+    });
+    const ticket = await createIssuedTicket({
       ticketId,
       actorId: args.actorId,
       eventId: event.id,
       registrationId: registration.id,
       orderId: null,
     });
-    registrations.set(registration.id, registration);
-    tickets.set(ticket.id, ticket);
+    await registrationTicketCoreStore.persistTicket({
+      ...ticket,
+      createdAt,
+      issuedAt: createdAt,
+    });
 
     logRegistrationDiagnostic({
       phase: 'free_registration_issued',
@@ -478,18 +479,20 @@ export async function createEventRegistration(args: {
     orderId,
   });
 
-  const registration: RegistrationRecord = {
+  const createdAt = now.toISOString();
+  const registration = await registrationTicketCoreStore.persistRegistration({
     id: registrationId,
     actorId: args.actorId,
     eventId: event.id,
     sourceType: 'checkout',
     status: 'requested',
-    requestedAt: now.toISOString(),
+    requestedAt: createdAt,
     approvedAt: null,
     checkoutOrderId: orderId,
     ticketId: null,
-  };
-  registrations.set(registration.id, registration);
+    createdAt,
+    updatedAt: createdAt,
+  });
 
   logRegistrationDiagnostic({
     phase: 'paid_registration_created',
@@ -516,7 +519,7 @@ export async function issuePaidTicketForSuccessfulOrder(args: {
   eventId: string;
   paidAt?: string;
 }) {
-  const registration = registrations.get(args.registrationId);
+  const registration = await registrationTicketCoreStore.loadRegistrationById(args.registrationId);
   if (!registration) {
     throw new EventRegistrationTicketError(
       'REGISTRATION_NOT_FOUND',
@@ -558,10 +561,10 @@ export async function issuePaidTicketForSuccessfulOrder(args: {
     );
   }
 
-  const existingTicket = registration.ticketId
-    ? (tickets.get(registration.ticketId) ?? null)
-    : null;
-  if (registration.ticketId && existingTicket) {
+  const existingTicket = await registrationTicketCoreStore.loadTicketByRegistrationId(
+    registration.id,
+  );
+  if (existingTicket) {
     return {
       registration,
       ticket: existingTicket,
@@ -570,7 +573,7 @@ export async function issuePaidTicketForSuccessfulOrder(args: {
   }
 
   const ticketId = buildTicketId(registration.id);
-  const ticket = createIssuedTicket({
+  const ticket = await createIssuedTicket({
     ticketId,
     actorId: args.actorId,
     eventId: args.eventId,
@@ -578,15 +581,24 @@ export async function issuePaidTicketForSuccessfulOrder(args: {
     orderId: args.orderId,
   });
   const approvedAt = registration.approvedAt ?? args.paidAt ?? new Date().toISOString();
-  const approvedRegistration: RegistrationRecord = {
-    ...registration,
-    status: 'approved',
+  const createdAt = args.paidAt ?? new Date().toISOString();
+  await registrationTicketCoreStore.persistTicket({
+    ...ticket,
+    createdAt,
+    issuedAt: approvedAt,
+  });
+  const approvedRegistration = await registrationTicketCoreStore.updateRegistrationApproval({
+    registrationId: registration.id,
     approvedAt,
     ticketId: ticket.id,
-  };
-
-  registrations.set(approvedRegistration.id, approvedRegistration);
-  tickets.set(ticket.id, ticket);
+  });
+  if (!approvedRegistration) {
+    throw new EventRegistrationTicketError(
+      'DURABLE_TICKET_ISSUANCE_MISSING',
+      'Registration approval projection failed after ticket issuance.',
+      500,
+    );
+  }
 
   return {
     registration: approvedRegistration,
@@ -595,11 +607,11 @@ export async function issuePaidTicketForSuccessfulOrder(args: {
   };
 }
 
-export function getOwnedTicket(args: {
+export async function getOwnedTicket(args: {
   actorId: string;
   ticketId: string;
 }) {
-  const ticket = tickets.get(args.ticketId);
+  const ticket = await registrationTicketCoreStore.loadTicketById(args.ticketId);
   if (!ticket) {
     throw new EventRegistrationTicketError(
       'TICKET_NOT_FOUND',
@@ -646,9 +658,9 @@ export function getOwnedTicket(args: {
   };
 }
 
-export function listOwnedTickets(args: { actorId: string }) {
-  return Array.from(tickets.values())
-    .filter((ticket) => ticket.actorId === args.actorId)
+export async function listOwnedTickets(args: { actorId: string }) {
+  const tickets = await registrationTicketCoreStore.listTicketsByActor(args.actorId);
+  return tickets
     .map((ticket) => {
       const event = eventsById.get(ticket.eventId);
       if (!event) {
