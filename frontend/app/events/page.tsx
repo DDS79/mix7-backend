@@ -6,6 +6,7 @@ import { Badge } from '@/shared/ui/Badge';
 import { Card } from '@/shared/ui/Card';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { ErrorState } from '@/shared/ui/ErrorState';
+import { EventListPrimaryAction } from '@/widgets/EventListPrimaryAction';
 
 export default async function EventsPage() {
   try {
@@ -40,9 +41,7 @@ export default async function EventsPage() {
                 <span>{event.visibility}</span>
               </div>
               <div className="row" style={{ justifyContent: 'flex-start', flexWrap: 'wrap' }}>
-                <Link className="button button-primary" href={routes.eventRegister(event.slug)}>
-                  {event.pricing.mode === 'free' ? 'Register' : 'Buy ticket'}
-                </Link>
+                <EventListPrimaryAction event={event} />
                 <Link className="button button-secondary" href={routes.eventDetail(event.slug)}>
                   Open details
                 </Link>
