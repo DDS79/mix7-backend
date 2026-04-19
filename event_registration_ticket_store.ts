@@ -256,16 +256,6 @@ function findEventBySlug(slug: string) {
   return eventsBySlug.get(slug) ?? null;
 }
 
-function logRegistrationDiagnostic(payload: Record<string, unknown>) {
-  // Temporary diagnostic instrumentation for production paid-registration debugging.
-  console.info(
-    JSON.stringify({
-      scope: 'create_event_registration',
-      ...payload,
-    }),
-  );
-}
-
 function findCategory(categoryId: string | null) {
   return categoryId ? categories.get(categoryId) ?? null : null;
 }
@@ -366,15 +356,6 @@ export async function createEventRegistration(args: {
 
   ensureEventRegistrable(event);
 
-  logRegistrationDiagnostic({
-    phase: 'entered',
-    eventSlug: args.eventSlug,
-    actorId: args.actorId,
-    branch: event.priceMinor === 0 ? 'free' : 'paid',
-    priceMinor: event.priceMinor,
-    currency: event.currency,
-  });
-
   const registrationId = buildRegistrationId(args.actorId, event.id);
   const existing = await registrationTicketCoreStore.loadRegistrationById(registrationId);
   if (existing) {
@@ -421,14 +402,6 @@ export async function createEventRegistration(args: {
       issuedAt: createdAt,
     });
 
-    logRegistrationDiagnostic({
-      phase: 'free_registration_issued',
-      eventSlug: args.eventSlug,
-      actorId: args.actorId,
-      registrationId: registration.id,
-      ticketId: ticket.id,
-    });
-
     return {
       registration,
       event,
@@ -440,13 +413,6 @@ export async function createEventRegistration(args: {
   }
 
   const orderId = buildOrderId(registrationId);
-  logRegistrationDiagnostic({
-    phase: 'paid_order_creation_start',
-    eventSlug: args.eventSlug,
-    actorId: args.actorId,
-    registrationId,
-    orderId,
-  });
 
   try {
     await createRuntimeOrder({
@@ -459,25 +425,8 @@ export async function createEventRegistration(args: {
       currency: event.currency,
     });
   } catch (error) {
-    logRegistrationDiagnostic({
-      phase: 'paid_order_creation_failed',
-      eventSlug: args.eventSlug,
-      actorId: args.actorId,
-      registrationId,
-      orderId,
-      errorMessage: error instanceof Error ? error.message : 'Unknown error',
-      errorStack: error instanceof Error ? error.stack ?? null : null,
-    });
     throw error;
   }
-
-  logRegistrationDiagnostic({
-    phase: 'paid_order_creation_succeeded',
-    eventSlug: args.eventSlug,
-    actorId: args.actorId,
-    registrationId,
-    orderId,
-  });
 
   const createdAt = now.toISOString();
   const registration = await registrationTicketCoreStore.persistRegistration({
@@ -492,14 +441,6 @@ export async function createEventRegistration(args: {
     ticketId: null,
     createdAt,
     updatedAt: createdAt,
-  });
-
-  logRegistrationDiagnostic({
-    phase: 'paid_registration_created',
-    eventSlug: args.eventSlug,
-    actorId: args.actorId,
-    registrationId: registration.id,
-    orderId,
   });
 
   return {
