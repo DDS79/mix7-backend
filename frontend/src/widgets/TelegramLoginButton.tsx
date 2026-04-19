@@ -14,7 +14,14 @@ export function TelegramLoginButton() {
   const returnPath = pathname || routes.events();
 
   if (isAuthenticated) {
-    return <Badge tone="success">Telegram connected</Badge>;
+    return (
+      <div className="row" style={{ justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <Badge tone="success">Telegram connected</Badge>
+        <Link className="button button-secondary" href={routes.account()}>
+          Мои билеты
+        </Link>
+      </div>
+    );
   }
 
   return (

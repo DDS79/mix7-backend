@@ -10,6 +10,7 @@ export const routes = {
     token
       ? `/login/telegram/complete?token=${encodeURIComponent(token)}`
       : '/login/telegram/complete',
+  account: () => '/account',
   checkout: (orderId: string) => `/checkout/${orderId}`,
   ticket: (ticketId: string) => `/tickets/${ticketId}`,
 } as const;
