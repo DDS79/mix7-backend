@@ -153,10 +153,17 @@ export async function POST(request: Request) {
       return errorResponse(error.status, error.code, error.message);
     }
 
+    // Temporary diagnostic instrumentation for production payment-intent debugging.
     return errorResponse(
       500,
       'INTERNAL_SERVER_ERROR',
       'Unexpected payment intent error.',
+      [
+        {
+          field: 'runtime',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        },
+      ],
     );
   }
 }
