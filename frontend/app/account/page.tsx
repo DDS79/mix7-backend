@@ -77,6 +77,8 @@ export default function AccountPage() {
     );
 
     if (!isAuthenticated) {
+      setError(null);
+      setTickets([]);
       setLoading(false);
       return;
     }

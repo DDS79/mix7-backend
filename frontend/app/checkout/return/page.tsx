@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { listTickets, type TicketDetail } from '@/features/tickets/api/tickets.api';
+import { useRuntimeSessionState } from '@/entities/session/hooks/useRuntimeSessionState';
 import { readPendingCheckout, readSessionState } from '@/entities/session/lib/sessionStorage';
 import { routes } from '@/shared/constants/routes';
 import { Button } from '@/shared/ui/Button';
@@ -45,11 +46,16 @@ function selectRelevantTicket(args: {
 
 export default function CheckoutReturnPage() {
   const router = useRouter();
+  const runtimeSession = useRuntimeSessionState();
   const [state, setState] = useState<ReturnState>({ kind: 'loading' });
 
   useEffect(() => {
-    const session = readSessionState();
-    if (!session?.sessionId) {
+    const session = readSessionState() ?? runtimeSession;
+    const isAuthenticated = Boolean(
+      session?.sessionId && session.sessionType && session.sessionType !== 'anonymous',
+    );
+
+    if (!isAuthenticated) {
       setState({ kind: 'session_missing' });
       return;
     }
@@ -73,7 +79,7 @@ export default function CheckoutReturnPage() {
         })()
       : null;
 
-    void listTickets({ sessionId: session.sessionId })
+    void listTickets({ sessionId: session!.sessionId })
       .then((tickets) => {
         const relevantTicket = selectRelevantTicket({
           tickets,
@@ -108,12 +114,17 @@ export default function CheckoutReturnPage() {
         });
       })
       .catch((error) => {
+        if (!readSessionState()) {
+          setState({ kind: 'session_missing' });
+          return;
+        }
+
         setState({
           kind: 'error',
           message: error instanceof Error ? error.message : 'Failed to recover checkout return state.',
         });
       });
-  }, [router]);
+  }, [router, runtimeSession]);
 
   if (state.kind === 'loading') {
     return (

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 
@@ -8,6 +9,8 @@ import {
   readSessionState,
   writeSessionState,
 } from '@/entities/session/lib/sessionStorage';
+import { useRuntimeSessionState } from '@/entities/session/hooks/useRuntimeSessionState';
+import { routes } from '@/shared/constants/routes';
 import { Badge } from '@/shared/ui/Badge';
 import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Card';
@@ -16,6 +19,7 @@ import { Spinner } from '@/shared/ui/Spinner';
 
 export default function TicketPage() {
   const params = useParams<{ ticketId: string }>();
+  const runtimeSession = useRuntimeSessionState();
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,15 +61,20 @@ export default function TicketPage() {
       window.history.replaceState(null, '', `/tickets/${ticketId}`);
     }
 
-    const session = readSessionState();
-    if (!session?.sessionId) {
-      setError('Session bootstrap is not ready.');
+    const session = readSessionState() ?? runtimeSession;
+    const isAuthenticated = Boolean(
+      session?.sessionId && session.sessionType && session.sessionType !== 'anonymous',
+    );
+
+    if (!isAuthenticated) {
+      setTicket(null);
+      setError(null);
       setLoading(false);
       return;
     }
 
     void getTicket({
-      sessionId: session.sessionId,
+      sessionId: session!.sessionId,
       ticketId,
     })
       .then((result) => {
@@ -73,16 +82,46 @@ export default function TicketPage() {
         setLoading(false);
       })
       .catch((nextError) => {
+        if (!readSessionState()) {
+          setTicket(null);
+          setError(null);
+          setLoading(false);
+          return;
+        }
+
         setError(nextError instanceof Error ? nextError.message : 'Ticket load failed.');
         setLoading(false);
       });
-  }, [ticketId]);
+  }, [ticketId, runtimeSession]);
 
   if (loading) {
     return (
       <div className="screen-center">
         <Spinner />
       </div>
+    );
+  }
+
+  const currentSession = readSessionState() ?? runtimeSession;
+  const isAuthenticated = Boolean(
+    currentSession?.sessionId &&
+      currentSession.sessionType &&
+      currentSession.sessionType !== 'anonymous',
+  );
+
+  if (!isAuthenticated) {
+    return (
+      <Card>
+        <div className="stack">
+          <h2>Ticket unavailable</h2>
+          <p className="subtle">
+            Войдите через Telegram заново, чтобы открыть билет после обновления backend-сессии.
+          </p>
+          <Link className="button button-primary" href={routes.telegramLogin(routes.account())}>
+            Login with Telegram
+          </Link>
+        </div>
+      </Card>
     );
   }
 

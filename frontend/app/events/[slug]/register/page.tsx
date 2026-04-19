@@ -52,7 +52,11 @@ export default function RegisterPage() {
       });
       router.push(resolveRegistrationNextAction(result));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Registration failed.');
+      if (!readSessionState()) {
+        setError(null);
+      } else {
+        setError(nextError instanceof Error ? nextError.message : 'Registration failed.');
+      }
       setSubmitting(false);
     }
   }

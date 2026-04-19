@@ -49,6 +49,13 @@ export function writeSessionState(value: RuntimeSessionState) {
   }
 }
 
+export function clearSessionState() {
+  getStorage()?.removeItem(SESSION_STORAGE_KEY);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(SESSION_STATE_CHANGED_EVENT, { detail: null }));
+  }
+}
+
 export function readPendingCheckout(orderId: string): PendingCheckoutContext | null {
   const storage = getStorage();
   const raw = storage?.getItem(CHECKOUT_STORAGE_KEY);
