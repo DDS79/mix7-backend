@@ -34,3 +34,19 @@ export async function getTicket(args: {
 
   return response.data;
 }
+
+export async function listTickets(args: {
+  sessionId: string;
+}) {
+  const response = await apiRequest<{
+    ok: true;
+    data: {
+      tickets: TicketDetail[];
+    };
+  }>({
+    path: '/tickets',
+    sessionId: args.sessionId,
+  });
+
+  return response.data.tickets;
+}
