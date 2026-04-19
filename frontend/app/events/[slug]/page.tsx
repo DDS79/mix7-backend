@@ -1,10 +1,9 @@
-import Link from 'next/link';
-
 import { getEventDetail } from '@/features/events/api/events.api';
 import { routes } from '@/shared/constants/routes';
 import { Badge } from '@/shared/ui/Badge';
 import { Card } from '@/shared/ui/Card';
 import { ErrorState } from '@/shared/ui/ErrorState';
+import { EventDetailPrimaryAction } from '@/widgets/EventDetailPrimaryAction';
 
 export default async function EventDetailPage(props: {
   params: Promise<{ slug: string }>;
@@ -40,9 +39,7 @@ export default async function EventDetailPage(props: {
                 <Badge key={characteristic.id}>{characteristic.key}</Badge>
               ))}
             </div>
-            <Link className="button button-primary" href={routes.eventRegister(event.slug)}>
-              Register
-            </Link>
+            <EventDetailPrimaryAction eventSlug={event.slug} />
           </div>
         </Card>
       </div>

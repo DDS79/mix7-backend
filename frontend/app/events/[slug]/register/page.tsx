@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { createRegistration } from '@/features/registrations/api/registrations.api';
 import { useRuntimeSessionState } from '@/entities/session/hooks/useRuntimeSessionState';
 import { readSessionState } from '@/entities/session/lib/sessionStorage';
+import { useOwnedEventTicket } from '@/features/tickets/hooks/useOwnedEventTicket';
 import { resolveRegistrationNextAction } from '@/processes/registration/lib/resolveRegistrationNextAction';
 import { routes } from '@/shared/constants/routes';
 import { Button } from '@/shared/ui/Button';
@@ -21,6 +22,7 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
 
   const slug = Array.isArray(params.slug) ? params.slug[0] : params.slug;
+  const ownedTicketState = useOwnedEventTicket(slug ?? null);
   const loginHref = slug ? routes.telegramLogin(routes.eventRegister(slug)) : routes.telegramLogin();
   const currentSession = readSessionState() ?? runtimeSession;
   const isAuthenticated = Boolean(
@@ -65,18 +67,34 @@ export default function RegisterPage() {
             returns an issued ticket.
           </p>
         </div>
+        {ownedTicketState.ticket ? (
+          <>
+            <p className="subtle">
+              У вас уже есть билет на это событие. Повторная регистрация и оплата не нужны.
+            </p>
+            <Link className="button button-primary" href={routes.ticket(ownedTicketState.ticket.id)}>
+              Открыть билет
+            </Link>
+            <Link className="button button-secondary" href={slug ? routes.eventDetail(slug) : routes.events()}>
+              Back to event
+            </Link>
+          </>
+        ) : (
+          <>
         {error ? <ErrorState title="Registration failed" message={error} /> : null}
         {!isAuthenticated ? (
           <Link className="button button-secondary" href={loginHref}>
             Login with Telegram
           </Link>
         ) : null}
-        <Button disabled={submitting} onClick={onSubmit}>
+        <Button disabled={submitting || ownedTicketState.loading} onClick={onSubmit}>
           {submitting ? 'Submitting…' : 'Submit registration'}
         </Button>
         <Link className="button button-secondary" href={slug ? routes.eventDetail(slug) : routes.events()}>
           Back to event
         </Link>
+          </>
+        )}
       </div>
     </Card>
   );
