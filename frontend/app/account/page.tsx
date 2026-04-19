@@ -25,6 +25,45 @@ function formatOptionalDate(value: string | null) {
   }
 }
 
+function toTimestamp(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function sortTicketsForAccount(tickets: TicketDetail[]) {
+  const now = Date.now();
+
+  return [...tickets].sort((left, right) => {
+    const leftStartsAt = toTimestamp(left.event.startsAt);
+    const rightStartsAt = toTimestamp(right.event.startsAt);
+
+    const leftUpcoming = leftStartsAt !== null && leftStartsAt >= now;
+    const rightUpcoming = rightStartsAt !== null && rightStartsAt >= now;
+
+    if (leftUpcoming !== rightUpcoming) {
+      return leftUpcoming ? -1 : 1;
+    }
+
+    if (leftStartsAt !== null && rightStartsAt !== null) {
+      return leftUpcoming ? leftStartsAt - rightStartsAt : rightStartsAt - leftStartsAt;
+    }
+
+    if (leftStartsAt !== null) {
+      return -1;
+    }
+
+    if (rightStartsAt !== null) {
+      return 1;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
 export default function AccountPage() {
   const runtimeSession = useRuntimeSessionState();
   const [tickets, setTickets] = useState<TicketDetail[]>([]);
@@ -96,6 +135,8 @@ export default function AccountPage() {
     );
   }
 
+  const sortedTickets = sortTicketsForAccount(tickets);
+
   return (
     <div className="stack">
       <Card>
@@ -107,22 +148,29 @@ export default function AccountPage() {
         </div>
       </Card>
 
-      {tickets.map((ticket) => {
-        const issuedAt = formatOptionalDate(ticket.validFrom);
+      {sortedTickets.map((ticket) => {
+        const eventDate = formatOptionalDate(ticket.event.startsAt);
 
         return (
           <Card key={ticket.id}>
             <div className="stack">
-              <div className="row" style={{ justifyContent: 'space-between', gap: '1rem' }}>
-                <h3 style={{ marginBottom: 0 }}>{ticket.event.title}</h3>
-                <Badge tone="success">{ticket.status}</Badge>
+              <div className="stack" style={{ gap: '0.5rem' }}>
+                <div className="row" style={{ justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  <div className="stack" style={{ gap: '0.25rem' }}>
+                    <h3 style={{ marginBottom: 0 }}>{ticket.event.title || ticket.event.slug}</h3>
+                    {eventDate ? <span className="subtle">{eventDate}</span> : null}
+                  </div>
+                  <Badge tone="success">{ticket.status}</Badge>
+                </div>
               </div>
               <div className="meta-list">
-                <span>Событие: {ticket.event.slug}</span>
-                {issuedAt ? <span>Доступ с: {issuedAt}</span> : null}
+                {!ticket.event.title ? <span>Событие: {ticket.event.slug}</span> : null}
                 <span>Ticket: {ticket.id}</span>
+                <span>Статус: {ticket.status}</span>
+                <span>Access class: {ticket.accessClass}</span>
+                {ticket.orderId ? <span>Order: {ticket.orderId}</span> : null}
               </div>
-              <div className="row" style={{ justifyContent: 'flex-start' }}>
+              <div className="row" style={{ justifyContent: 'flex-start', flexWrap: 'wrap' }}>
                 <Link className="button button-primary" href={routes.ticket(ticket.id)}>
                   Открыть билет
                 </Link>
