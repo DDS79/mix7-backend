@@ -11,6 +11,7 @@ export const routes = {
       ? `/login/telegram/complete?token=${encodeURIComponent(token)}`
       : '/login/telegram/complete',
   account: () => '/account',
+  admin: () => '/admin',
   checkout: (orderId: string) => `/checkout/${orderId}`,
   ticket: (ticketId: string) => `/tickets/${ticketId}`,
 } as const;

@@ -26,7 +26,7 @@ function isRejectedSessionError(error: unknown) {
 
 export async function apiRequest<T>(args: {
   path: string;
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PATCH';
   sessionId?: string | null;
   idempotencyKey?: string | null;
   body?: unknown;
