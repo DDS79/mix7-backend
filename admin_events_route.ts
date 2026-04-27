@@ -22,6 +22,7 @@ const eventPayloadSchema = z.object({
   characteristicRefs: z.array(z.string().trim().min(1).max(140)).default([]),
   visibility: z.enum(['public', 'private', 'members_only', 'invite_only']),
   metadata: z.record(z.string(), z.unknown()).default({}),
+  capacity: z.number().int().min(0).nullable().optional(),
   priceMinor: z.number().int().min(0),
   currency: z.string().trim().length(3).regex(/^[A-Za-z]{3}$/),
   salesOpen: z.boolean().optional(),

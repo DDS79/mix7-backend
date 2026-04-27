@@ -11,6 +11,8 @@ import {
 import { handleApiRequest } from './server';
 import { resetEventRegistrationTicketStore } from './event_registration_ticket_store';
 
+const ADMIN_TELEGRAM_ID = '700700700';
+
 async function issueSession(buyerRef: string) {
   const response = await handleApiRequest(
     new Request('http://render.local/session/issue', {
@@ -24,6 +26,29 @@ async function issueSession(buyerRef: string) {
         authStatus: 'provisional',
         loginRef: `guest-${buyerRef}`,
         trustLevel: 'provisional',
+      }),
+    }),
+  );
+
+  return response.json();
+}
+
+async function issueAdminSession() {
+  process.env.ADMIN_TELEGRAM_IDS = ADMIN_TELEGRAM_ID;
+
+  const response = await handleApiRequest(
+    new Request('http://render.local/session/issue', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        buyerRef: `tg:${ADMIN_TELEGRAM_ID}`,
+        authType: 'external_provider',
+        authStatus: 'active',
+        loginRef: `tg:${ADMIN_TELEGRAM_ID}`,
+        sessionType: 'authenticated',
+        trustLevel: 'active',
       }),
     }),
   );
@@ -66,6 +91,8 @@ async function listOwnedTickets(sessionId: string) {
 
 describe('paid ticket issuance boundary', () => {
   beforeEach(() => {
+    delete process.env.ADMIN_ACTOR_IDS;
+    delete process.env.ADMIN_TELEGRAM_IDS;
     resetHttpRuntimeIdentityForTests();
     resetHttpRuntimeState();
     resetPaymentRuntimeStore();
@@ -137,5 +164,86 @@ describe('paid ticket issuance boundary', () => {
     const afterSecondSuccess = await listOwnedTickets(session.data.sessionId);
     expect(afterSecondSuccess.json.data.tickets).toHaveLength(1);
     expect(afterSecondSuccess.json.data.tickets[0].id).toBe(firstSuccess?.ticket.id);
+  });
+
+  it('blocks payment start for a pending order once the event becomes sold out', async () => {
+    const admin = await issueAdminSession();
+
+    const createEvent = await handleApiRequest(
+      new Request('http://render.local/admin/events', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-session-id': admin.data.sessionId,
+        },
+        body: JSON.stringify({
+          slug: 'limited-paid-event',
+          venueId: null,
+          title: 'Limited Paid Event',
+          summary: 'One paid seat',
+          description: 'One paid seat',
+          status: 'published',
+          startsAt: '2026-06-12T18:00:00.000Z',
+          endsAt: '2026-06-12T20:00:00.000Z',
+          categoryRef: null,
+          characteristicRefs: [],
+          visibility: 'public',
+          metadata: {},
+          capacity: 1,
+          priceMinor: 2500,
+          currency: 'RUB',
+        }),
+      }),
+    );
+    expect(createEvent.status).toBe(201);
+
+    const firstBuyerRef = '34343434-3434-4343-8343-343434343434';
+    const secondBuyerRef = '45454545-4545-4545-8545-454545454545';
+    const firstSession = await issueSession(firstBuyerRef);
+    const secondSession = await issueSession(secondBuyerRef);
+
+    const firstRegistration = await createRegistration(
+      firstSession.data.sessionId,
+      'limited-paid-event',
+    );
+    const secondRegistration = await createRegistration(
+      secondSession.data.sessionId,
+      'limited-paid-event',
+    );
+
+    expect(firstRegistration.response.status).toBe(201);
+    expect(secondRegistration.response.status).toBe(201);
+
+    await runtimeInitiatePaymentIntent({
+      buyerId: firstBuyerRef,
+      orderId: firstRegistration.json.data.checkout.orderId,
+      amount: 2500,
+      currency: 'RUB',
+      paymentMethod: 'card',
+      idempotencyKey: 'limited-paid-event-intent-1',
+    });
+
+    const firstPayment = await paymentCoreStore.loadPaymentByOrder(
+      firstRegistration.json.data.checkout.orderId,
+      firstBuyerRef,
+    );
+    expect(firstPayment).not.toBeNull();
+
+    await projectRuntimePaymentSuccess({
+      paymentId: firstPayment!.id,
+    });
+
+    await expect(
+      runtimeInitiatePaymentIntent({
+        buyerId: secondBuyerRef,
+        orderId: secondRegistration.json.data.checkout.orderId,
+        amount: 2500,
+        currency: 'RUB',
+        paymentMethod: 'card',
+        idempotencyKey: 'limited-paid-event-intent-2',
+      }),
+    ).rejects.toMatchObject({
+      code: 'EVENT_SOLD_OUT',
+    });
   });
 });

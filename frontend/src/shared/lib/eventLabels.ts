@@ -35,3 +35,18 @@ export function getEventSalesLabel(salesOpen: boolean) {
 export function getArchivedLabel() {
   return 'В архиве';
 }
+
+export function getRemainingCapacityLabel(
+  remainingCapacity: number | null,
+  soldOut: boolean,
+) {
+  if (soldOut) {
+    return 'Мест нет';
+  }
+
+  if (remainingCapacity === null) {
+    return null;
+  }
+
+  return `Осталось ${remainingCapacity} мест`;
+}

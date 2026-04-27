@@ -10,7 +10,7 @@ import { useRuntimeSessionState } from '@/entities/session/hooks/useRuntimeSessi
 import { readSessionState } from '@/entities/session/lib/sessionStorage';
 import { useOwnedEventTicket } from '@/features/tickets/hooks/useOwnedEventTicket';
 import { resolveRegistrationNextAction } from '@/processes/registration/lib/resolveRegistrationNextAction';
-import { getEventSalesLabel } from '@/shared/lib/eventLabels';
+import { getEventSalesLabel, getRemainingCapacityLabel } from '@/shared/lib/eventLabels';
 import { routes } from '@/shared/constants/routes';
 import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Card';
@@ -80,6 +80,11 @@ export default function RegisterPage() {
       return;
     }
 
+    if (event && event.soldOut) {
+      setError('Мест нет.');
+      return;
+    }
+
     const session = readSessionState() ?? runtimeSession;
     if (!session?.sessionId || !session.sessionType || session.sessionType === 'anonymous') {
       setError('Login with Telegram to continue registration.');
@@ -117,6 +122,7 @@ export default function RegisterPage() {
   }
 
   const salesClosed = Boolean(event && !event.registration.salesOpen && !ownedTicketState.ticket);
+  const soldOut = Boolean(event && event.soldOut && !ownedTicketState.ticket);
 
   return (
     <Card>
@@ -147,17 +153,29 @@ export default function RegisterPage() {
             message="Новые регистрации и покупки для этого события сейчас недоступны."
           />
         ) : null}
-        {error && !salesClosed ? <ErrorState title="Регистрация не выполнена" message={error} /> : null}
+        {soldOut ? (
+          <ErrorState
+            title={getRemainingCapacityLabel(0, true) ?? 'Мест нет'}
+            message="Новые регистрации и покупки для этого события больше недоступны."
+          />
+        ) : null}
+        {error && !salesClosed && !soldOut ? <ErrorState title="Регистрация не выполнена" message={error} /> : null}
         {!isAuthenticated ? (
           <Link className="button button-secondary" href={loginHref}>
             Войти через Telegram
           </Link>
         ) : null}
         <Button
-          disabled={submitting || ownedTicketState.loading || salesClosed}
+          disabled={submitting || ownedTicketState.loading || salesClosed || soldOut}
           onClick={onSubmit}
         >
-          {submitting ? 'Отправляем…' : salesClosed ? getEventSalesLabel(false) : 'Продолжить'}
+          {submitting
+            ? 'Отправляем…'
+            : salesClosed
+              ? getEventSalesLabel(false)
+              : soldOut
+                ? getRemainingCapacityLabel(0, true)
+                : 'Продолжить'}
         </Button>
         <Link className="button button-secondary" href={slug ? routes.eventDetail(slug) : routes.events()}>
           Назад к событию

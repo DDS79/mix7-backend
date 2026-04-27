@@ -23,12 +23,20 @@ export type EventListItem = {
   sales: {
     open: boolean;
   };
+  capacity: number | null;
+  occupiedCount: number;
+  remainingCapacity: number | null;
+  soldOut: boolean;
 };
 
 type EventListItemWire = Omit<EventListItem, 'sales'> & {
   sales?: {
     open?: boolean;
   };
+  capacity?: number | null;
+  occupiedCount?: number;
+  remainingCapacity?: number | null;
+  soldOut?: boolean;
 };
 
 export type EventDetail = {
@@ -55,15 +63,23 @@ export type EventDetail = {
     freeEvent: boolean;
     salesOpen: boolean;
   };
+  capacity: number | null;
+  occupiedCount: number;
+  remainingCapacity: number | null;
+  soldOut: boolean;
   metadata: Record<string, unknown>;
 };
 
-type EventDetailWire = Omit<EventDetail, 'registration'> & {
+type EventDetailWire = Omit<EventDetail, 'registration' | 'capacity' | 'occupiedCount' | 'remainingCapacity' | 'soldOut'> & {
   registration: {
     required: boolean;
     freeEvent: boolean;
     salesOpen?: boolean;
   };
+  capacity?: number | null;
+  occupiedCount?: number;
+  remainingCapacity?: number | null;
+  soldOut?: boolean;
 };
 
 function normalizeEventListItem(event: EventListItemWire): EventListItem {
@@ -72,6 +88,10 @@ function normalizeEventListItem(event: EventListItemWire): EventListItem {
     sales: {
       open: event.sales?.open ?? true,
     },
+    capacity: event.capacity ?? null,
+    occupiedCount: event.occupiedCount ?? 0,
+    remainingCapacity: event.remainingCapacity ?? null,
+    soldOut: event.soldOut ?? false,
   };
 }
 
@@ -82,6 +102,10 @@ function normalizeEventDetail(event: EventDetailWire): EventDetail {
       ...event.registration,
       salesOpen: event.registration.salesOpen ?? true,
     },
+    capacity: event.capacity ?? null,
+    occupiedCount: event.occupiedCount ?? 0,
+    remainingCapacity: event.remainingCapacity ?? null,
+    soldOut: event.soldOut ?? false,
   };
 }
 

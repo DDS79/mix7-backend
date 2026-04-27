@@ -116,6 +116,7 @@ export type Event = {
   characteristicRefs: string[];
   visibility: EventVisibility;
   metadata: Record<string, unknown>;
+  capacity: number | null;
 };
 
 export type EventCategoryStatus = 'active' | 'inactive';

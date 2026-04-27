@@ -43,6 +43,7 @@ type CreateFormState = {
   description: string;
   startsAt: string;
   endsAt: string;
+  capacity: string;
   priceMinor: string;
   currency: string;
   status: AdminEventRecord['status'];
@@ -55,6 +56,7 @@ type EditFormState = {
   description: string;
   startsAt: string;
   endsAt: string;
+  capacity: string;
   priceMinor: string;
   currency: string;
   status: AdminEventRecord['status'];
@@ -68,6 +70,7 @@ const DEFAULT_CREATE_FORM: CreateFormState = {
   description: '',
   startsAt: '',
   endsAt: '',
+  capacity: '',
   priceMinor: '0',
   currency: 'RUB',
   status: 'published',
@@ -160,6 +163,7 @@ function buildEditState(event: AdminEventRecord): EditFormState {
     description: event.description,
     startsAt: toDateTimeLocalValue(event.startsAt),
     endsAt: toDateTimeLocalValue(event.endsAt),
+    capacity: event.capacity === null ? '' : String(event.capacity),
     priceMinor: String(event.priceMinor),
     currency: event.currency,
     status: event.status,
@@ -175,6 +179,7 @@ function mapCreateFormToPayload(form: CreateFormState): CreateAdminEventInput {
     description: form.description.trim(),
     startsAt: toIsoFromDateTimeLocal(form.startsAt),
     endsAt: toIsoFromDateTimeLocal(form.endsAt),
+    capacity: form.capacity.trim() === '' ? null : Number(form.capacity),
     priceMinor: Number(form.priceMinor),
     currency: form.currency.trim().toUpperCase(),
     status: form.status,
@@ -346,6 +351,7 @@ export default function AdminPage() {
           description: editForm.description.trim(),
           startsAt: toIsoFromDateTimeLocal(editForm.startsAt),
           endsAt: toIsoFromDateTimeLocal(editForm.endsAt),
+          capacity: editForm.capacity.trim() === '' ? null : Number(editForm.capacity),
           priceMinor: Number(editForm.priceMinor),
           currency: editForm.currency.trim().toUpperCase(),
           status: editForm.status,
@@ -493,6 +499,19 @@ export default function AdminPage() {
             </label>
 
             <label className="stack admin-field">
+              <span>Вместимость</span>
+              <Input
+                type="number"
+                min="0"
+                value={createForm.capacity}
+                onChange={(event) =>
+                  setCreateForm((current) => ({ ...current, capacity: event.target.value }))
+                }
+                placeholder="Пусто = без лимита"
+              />
+            </label>
+
+            <label className="stack admin-field">
               <span>Цена (minor)</span>
               <Input
                 type="number"
@@ -596,6 +615,10 @@ export default function AdminPage() {
                         <span>Статус: {getEventStatusLabel(event.status)}</span>
                         <span>Начало: {formatDisplayDate(event.startsAt)}</span>
                         <span>Конец: {formatDisplayDate(event.endsAt)}</span>
+                        <span>
+                          Вместимость:{' '}
+                          {event.capacity === null ? 'Без лимита' : event.capacity}
+                        </span>
                         <span>Цена: {formatPrice(event)}</span>
                         <span>Продажи: {getEventSalesLabel(event.salesOpen)}</span>
                         <span>Видимость: {getEventVisibilityLabel(event.visibility)}</span>
@@ -716,6 +739,21 @@ export default function AdminPage() {
                                     current ? { ...current, endsAt: event.target.value } : current,
                                   )
                                 }
+                              />
+                            </label>
+
+                            <label className="stack admin-field">
+                              <span>Вместимость</span>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={editForm.capacity}
+                                onChange={(event) =>
+                                  setEditForm((current) =>
+                                    current ? { ...current, capacity: event.target.value } : current,
+                                  )
+                                }
+                                placeholder="Пусто = без лимита"
                               />
                             </label>
 

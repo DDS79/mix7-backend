@@ -61,6 +61,7 @@ export const DEFAULT_EVENT_CATALOG: EventRecord[] = [
     characteristicRefs: ['echar_daytime', 'echar_members_friendly'],
     visibility: 'public',
     metadata: {},
+    capacity: null,
     priceMinor: 0,
     currency: 'RUB',
     salesOpen: true,
@@ -83,6 +84,7 @@ export const DEFAULT_EVENT_CATALOG: EventRecord[] = [
     characteristicRefs: ['echar_evening'],
     visibility: 'public',
     metadata: {},
+    capacity: null,
     priceMinor: 2500,
     currency: 'RUB',
     salesOpen: true,
@@ -105,6 +107,7 @@ type CreateEventInput = {
   characteristicRefs: string[];
   visibility: EventVisibility;
   metadata: Record<string, unknown>;
+  capacity?: number | null;
   priceMinor: number;
   currency: string;
   salesOpen?: boolean;
@@ -126,6 +129,7 @@ type EventRow = {
   characteristic_refs: string[] | null;
   visibility: EventVisibility;
   metadata: Record<string, unknown> | null;
+  capacity: number | null;
   price_minor: number;
   currency: string;
   sales_open: boolean;
@@ -194,6 +198,7 @@ function mapEventRow(row: EventRow): EventRecord {
     characteristicRefs: row.characteristic_refs ?? [],
     visibility: row.visibility,
     metadata: row.metadata ?? {},
+    capacity: row.capacity,
     priceMinor: row.price_minor,
     currency: row.currency,
     salesOpen: row.sales_open,
@@ -303,6 +308,7 @@ function buildCreateEventRecord(input: CreateEventInput, nowIso: string): EventR
     characteristicRefs: [...input.characteristicRefs],
     visibility: input.visibility,
     metadata: { ...input.metadata },
+    capacity: input.capacity ?? null,
     priceMinor: input.priceMinor,
     currency: normalizeCurrency(input.currency),
     salesOpen: input.salesOpen ?? true,
@@ -333,6 +339,7 @@ function buildUpdatedEventRecord(
       : [...event.characteristicRefs],
     visibility: input.visibility ?? event.visibility,
     metadata: input.metadata ? { ...input.metadata } : { ...event.metadata },
+    capacity: input.capacity === undefined ? event.capacity : input.capacity,
     priceMinor: input.priceMinor ?? event.priceMinor,
     currency: input.currency ? normalizeCurrency(input.currency) : event.currency,
     salesOpen: input.salesOpen ?? event.salesOpen,
@@ -570,6 +577,7 @@ function selectEventSql(whereClause = '') {
     characteristic_refs,
     visibility,
     metadata,
+    capacity,
     price_minor,
     currency,
     sales_open,
@@ -642,9 +650,9 @@ function createPostgresEventAdminStore(): EventAdminStore {
         const created = buildCreateEventRecord({ ...input, slug: normalizedSlug }, nowIso);
         await client.query(
           `INSERT INTO events (
-             id, slug, venue_id, title, summary, description, status, starts_at, ends_at, category_ref, characteristic_refs, visibility, metadata, price_minor, currency, sales_open, archived_at, created_at, updated_at
+             id, slug, venue_id, title, summary, description, status, starts_at, ends_at, category_ref, characteristic_refs, visibility, metadata, capacity, price_minor, currency, sales_open, archived_at, created_at, updated_at
            )
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz, $9::timestamptz, $10, $11::jsonb, $12, $13::jsonb, $14, $15, $16, $17::timestamptz, $18::timestamptz, $19::timestamptz)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz, $9::timestamptz, $10, $11::jsonb, $12, $13::jsonb, $14, $15, $16, $17, $18::timestamptz, $19::timestamptz, $20::timestamptz)`,
           [
             created.id,
             created.slug,
@@ -659,6 +667,7 @@ function createPostgresEventAdminStore(): EventAdminStore {
             JSON.stringify(created.characteristicRefs),
             created.visibility,
             JSON.stringify(created.metadata),
+            created.capacity,
             created.priceMinor,
             created.currency,
             created.salesOpen,
@@ -731,10 +740,11 @@ function createPostgresEventAdminStore(): EventAdminStore {
                characteristic_refs = $11::jsonb,
                visibility = $12,
                metadata = $13::jsonb,
-               price_minor = $14,
-               currency = $15,
-               sales_open = $16,
-               updated_at = $17::timestamptz
+               capacity = $14,
+               price_minor = $15,
+               currency = $16,
+               sales_open = $17,
+               updated_at = $18::timestamptz
            WHERE id = $1`,
           [
             updated.id,
@@ -750,6 +760,7 @@ function createPostgresEventAdminStore(): EventAdminStore {
             JSON.stringify(updated.characteristicRefs),
             updated.visibility,
             JSON.stringify(updated.metadata),
+            updated.capacity,
             updated.priceMinor,
             updated.currency,
             updated.salesOpen,

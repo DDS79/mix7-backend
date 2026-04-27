@@ -171,4 +171,119 @@ describe('events routes', () => {
     expect(draftDetail.status).toBe(404);
     expect(archivedDetail.status).toBe(404);
   });
+
+  it('exposes capacity and sold-out state in public payloads', async () => {
+    const admin = await issueAdminSession();
+
+    const createResponse = await handleApiRequest(
+      new Request('http://render.local/admin/events', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-session-id': admin.data.sessionId,
+        },
+        body: JSON.stringify({
+          slug: 'capacity-event',
+          venueId: null,
+          title: 'Capacity Event',
+          summary: 'Limited seats',
+          description: 'Limited seats',
+          status: 'published',
+          startsAt: '2026-06-03T18:00:00.000Z',
+          endsAt: '2026-06-03T20:00:00.000Z',
+          categoryRef: null,
+          characteristicRefs: [],
+          visibility: 'public',
+          metadata: {},
+          capacity: 2,
+          priceMinor: 0,
+          currency: 'RUB',
+        }),
+      }),
+    );
+    expect(createResponse.status).toBe(201);
+
+    const beforeList = await GET();
+    const beforeListJson = await beforeList.json();
+    const beforeEvent = beforeListJson.data.events.find(
+      (event: { slug: string }) => event.slug === 'capacity-event',
+    );
+
+    expect(beforeEvent.capacity).toBe(2);
+    expect(beforeEvent.occupiedCount).toBe(0);
+    expect(beforeEvent.remainingCapacity).toBe(2);
+    expect(beforeEvent.soldOut).toBe(false);
+
+    const firstSession = await handleApiRequest(
+      new Request('http://render.local/session/issue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          buyerRef: '88888888-8888-4888-8888-888888888888',
+          authType: 'anonymous',
+          authStatus: 'provisional',
+          loginRef: 'guest-88888888-8888-4888-8888-888888888888',
+          trustLevel: 'provisional',
+        }),
+      }),
+    );
+    const secondSession = await handleApiRequest(
+      new Request('http://render.local/session/issue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          buyerRef: '99999999-9999-4999-8999-999999999999',
+          authType: 'anonymous',
+          authStatus: 'provisional',
+          loginRef: 'guest-99999999-9999-4999-8999-999999999999',
+          trustLevel: 'provisional',
+        }),
+      }),
+    );
+    const firstJson = await firstSession.json();
+    const secondJson = await secondSession.json();
+
+    await handleApiRequest(
+      new Request('http://render.local/registrations', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-session-id': firstJson.data.sessionId,
+        },
+        body: JSON.stringify({ eventSlug: 'capacity-event' }),
+      }),
+    );
+
+    const midDetail = await GET_BY_SLUG(
+      new Request('http://render.local/events/capacity-event'),
+      'capacity-event',
+    );
+    const midDetailJson = await midDetail.json();
+
+    expect(midDetailJson.data.capacity).toBe(2);
+    expect(midDetailJson.data.occupiedCount).toBe(1);
+    expect(midDetailJson.data.remainingCapacity).toBe(1);
+    expect(midDetailJson.data.soldOut).toBe(false);
+
+    await handleApiRequest(
+      new Request('http://render.local/registrations', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-session-id': secondJson.data.sessionId,
+        },
+        body: JSON.stringify({ eventSlug: 'capacity-event' }),
+      }),
+    );
+
+    const finalDetail = await GET_BY_SLUG(
+      new Request('http://render.local/events/capacity-event'),
+      'capacity-event',
+    );
+    const finalDetailJson = await finalDetail.json();
+
+    expect(finalDetailJson.data.occupiedCount).toBe(2);
+    expect(finalDetailJson.data.remainingCapacity).toBe(0);
+    expect(finalDetailJson.data.soldOut).toBe(true);
+  });
 });

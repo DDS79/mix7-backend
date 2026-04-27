@@ -29,6 +29,13 @@ export type TicketRecord = Ticket & {
   qrPayload: string | null;
 };
 
+export type EventCapacityState = {
+  capacity: number | null;
+  occupiedCount: number;
+  remainingCapacity: number | null;
+  soldOut: boolean;
+};
+
 export class EventRegistrationTicketError extends Error {
   readonly code: string;
   readonly status: number;
@@ -211,7 +218,28 @@ function eventPricingMode(event: EventRecord): EventPricingMode {
   return event.priceMinor > 0 ? 'paid' : 'free';
 }
 
-function ensureEventRegistrable(event: EventRecord) {
+async function getEventCapacityState(event: EventRecord): Promise<EventCapacityState> {
+  const occupiedCount = await registrationTicketCoreStore.countOccupiedTicketsByEvent(event.id);
+
+  if (event.capacity === null) {
+    return {
+      capacity: null,
+      occupiedCount,
+      remainingCapacity: null,
+      soldOut: false,
+    };
+  }
+
+  const remainingCapacity = Math.max(event.capacity - occupiedCount, 0);
+  return {
+    capacity: event.capacity,
+    occupiedCount,
+    remainingCapacity,
+    soldOut: remainingCapacity <= 0,
+  };
+}
+
+async function ensureEventRegistrable(event: EventRecord) {
   if (event.archivedAt) {
     throw new EventRegistrationTicketError(
       'EVENT_NOT_FOUND',
@@ -235,32 +263,50 @@ function ensureEventRegistrable(event: EventRecord) {
       409,
     );
   }
+
+  const capacity = await getEventCapacityState(event);
+  if (capacity.soldOut) {
+    throw new EventRegistrationTicketError(
+      'EVENT_SOLD_OUT',
+      'Event is sold out.',
+      409,
+    );
+  }
 }
 
 export async function listPublicEvents() {
   const events = await eventAdminStore.listPublicEvents();
 
-  return events
-    .sort((left, right) => left.startsAt.localeCompare(right.startsAt))
-    .map((event) => ({
-      id: event.id,
-      slug: event.slug,
-      title: event.title,
-      summary: event.summary,
-      startsAt: event.startsAt,
-      endsAt: event.endsAt,
-      visibility: event.visibility,
-      category: findCategory(event.categoryRef),
-      characteristicRefs: event.characteristicRefs,
-    pricing: {
-      mode: eventPricingMode(event),
-      priceMinor: event.priceMinor,
-      currency: event.currency,
-    },
-    sales: {
-      open: event.salesOpen,
-    },
-  }));
+  return Promise.all(
+    events
+      .sort((left, right) => left.startsAt.localeCompare(right.startsAt))
+      .map(async (event) => {
+        const capacity = await getEventCapacityState(event);
+        return {
+          id: event.id,
+          slug: event.slug,
+          title: event.title,
+          summary: event.summary,
+          startsAt: event.startsAt,
+          endsAt: event.endsAt,
+          visibility: event.visibility,
+          category: findCategory(event.categoryRef),
+          characteristicRefs: event.characteristicRefs,
+          pricing: {
+            mode: eventPricingMode(event),
+            priceMinor: event.priceMinor,
+            currency: event.currency,
+          },
+          sales: {
+            open: event.salesOpen,
+          },
+          capacity: capacity.capacity,
+          occupiedCount: capacity.occupiedCount,
+          remainingCapacity: capacity.remainingCapacity,
+          soldOut: capacity.soldOut,
+        };
+      }),
+  );
 }
 
 export async function getPublicEventDetail(slug: string) {
@@ -272,6 +318,8 @@ export async function getPublicEventDetail(slug: string) {
       404,
     );
   }
+
+  const capacity = await getEventCapacityState(event);
 
   return {
     id: event.id,
@@ -295,6 +343,10 @@ export async function getPublicEventDetail(slug: string) {
       freeEvent: event.priceMinor === 0,
       salesOpen: event.salesOpen,
     },
+    capacity: capacity.capacity,
+    occupiedCount: capacity.occupiedCount,
+    remainingCapacity: capacity.remainingCapacity,
+    soldOut: capacity.soldOut,
     metadata: event.metadata,
   };
 }
@@ -316,8 +368,6 @@ export async function createEventRegistration(args: {
     );
   }
 
-  ensureEventRegistrable(event);
-
   const registrationId = buildRegistrationId(args.actorId, event.id);
   const existing = await registrationTicketCoreStore.loadRegistrationById(registrationId);
   if (existing) {
@@ -334,6 +384,8 @@ export async function createEventRegistration(args: {
       replayed: true,
     };
   }
+
+  await ensureEventRegistrable(event);
 
   if (event.priceMinor === 0) {
     const ticketId = buildTicketId(registrationId);

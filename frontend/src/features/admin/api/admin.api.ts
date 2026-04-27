@@ -14,6 +14,7 @@ export type AdminEventRecord = {
   characteristicRefs: string[];
   visibility: 'public' | 'private' | 'members_only' | 'invite_only';
   metadata: Record<string, unknown>;
+  capacity: number | null;
   priceMinor: number;
   currency: string;
   salesOpen: boolean;
@@ -52,6 +53,7 @@ export type CreateAdminEventInput = {
   characteristicRefs: string[];
   visibility: AdminEventRecord['visibility'];
   metadata: Record<string, unknown>;
+  capacity?: number | null;
   priceMinor: number;
   currency: string;
   salesOpen?: boolean;

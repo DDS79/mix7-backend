@@ -113,6 +113,7 @@ type RegistrationTicketCoreStore = {
   loadTicketByRegistrationId: (registrationId: string) => Promise<RuntimeTicketRecord | null>;
   listTicketsByActor: (actorId: string) => Promise<RuntimeTicketRecord[]>;
   listTicketAccessCodesByEvent: (eventId: string) => Promise<Set<string>>;
+  countOccupiedTicketsByEvent: (eventId: string) => Promise<number>;
 };
 
 function toIso(value: Date | string | null) {
@@ -215,6 +216,10 @@ function createMemoryRegistrationTicketCoreStore(): RegistrationTicketCoreStore 
           .filter((ticket) => ticket.eventId === eventId)
           .map((ticket) => ticket.accessCode),
       ),
+    countOccupiedTicketsByEvent: async (eventId) =>
+      Array.from(tickets.values()).filter(
+        (ticket) => ticket.eventId === eventId && ticket.status !== 'revoked',
+      ).length,
     resetForTests: () => {
       registrations.clear();
       tickets.clear();
@@ -383,6 +388,16 @@ function createPostgresRegistrationTicketCoreStore(): RegistrationTicketCoreStor
         [eventId],
       );
       return new Set(result.rows.map((row) => row.access_code));
+    },
+    countOccupiedTicketsByEvent: async (eventId) => {
+      const result = await dbQuery<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+         FROM tickets
+         WHERE event_id = $1
+           AND status <> 'revoked'`,
+        [eventId],
+      );
+      return Number(result.rows[0]?.count ?? '0');
     },
   };
 }

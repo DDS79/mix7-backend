@@ -1,6 +1,7 @@
 import { hashRequest } from './test_stubs/idempotency';
 import { eventAdminStore } from './event_admin_store';
 import { issuePaidTicketForSuccessfulOrder } from './event_registration_ticket_store';
+import { registrationTicketCoreStore } from './registration_ticket_core_store';
 import {
   paymentCoreStore,
   resetPaymentCoreStoreForTests,
@@ -92,6 +93,17 @@ async function ensureEventAllowsNewOrder(eventId: string) {
       409,
     );
   }
+
+  if (event.capacity !== null) {
+    const occupiedCount = await registrationTicketCoreStore.countOccupiedTicketsByEvent(eventId);
+    if (occupiedCount >= event.capacity) {
+      throw new CheckoutOrderSourceError(
+        'EVENT_SOLD_OUT',
+        'Event is sold out.',
+        409,
+      );
+    }
+  }
 }
 
 async function ensureEventAllowsPaymentStart(eventId: string) {
@@ -114,6 +126,17 @@ async function ensureEventAllowsPaymentStart(eventId: string) {
       'Event sales are closed.',
       409,
     );
+  }
+
+  if (event.capacity !== null) {
+    const occupiedCount = await registrationTicketCoreStore.countOccupiedTicketsByEvent(eventId);
+    if (occupiedCount >= event.capacity) {
+      throw new CheckoutPaymentIntentDomainError(
+        'EVENT_SOLD_OUT',
+        'Event is sold out.',
+        409,
+      );
+    }
   }
 }
 

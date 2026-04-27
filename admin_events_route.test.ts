@@ -96,6 +96,7 @@ async function createAdminEvent(sessionId: string) {
         metadata: {
           source: 'test',
         },
+        capacity: 3,
         priceMinor: 1900,
         currency: 'rub',
         salesOpen: true,
@@ -147,6 +148,7 @@ describe('admin events routes', () => {
     expect(created.response.status).toBe(201);
     expect(created.json.data.event.slug).toBe('admin-test-event');
     expect(created.json.data.event.currency).toBe('RUB');
+    expect(created.json.data.event.capacity).toBe(3);
 
     const eventId = created.json.data.event.id;
 
@@ -159,6 +161,7 @@ describe('admin events routes', () => {
         },
         body: JSON.stringify({
           title: 'Admin Test Event Updated',
+          capacity: 1,
           priceMinor: 2100,
         }),
       }),
@@ -167,6 +170,7 @@ describe('admin events routes', () => {
 
     expect(updatedResponse.status).toBe(200);
     expect(updatedJson.data.event.title).toBe('Admin Test Event Updated');
+    expect(updatedJson.data.event.capacity).toBe(1);
     expect(updatedJson.data.event.priceMinor).toBe(2100);
 
     const closedResponse = await handleApiRequest(
