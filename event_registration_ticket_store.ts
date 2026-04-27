@@ -1,11 +1,15 @@
 import { hashRequest } from './test_stubs/idempotency';
+import {
+  eventAdminStore,
+  resetEventAdminStoreForTests,
+  type EventRecord,
+} from './event_admin_store';
 import { createRuntimeOrder } from './payment_runtime_store';
 import {
   registrationTicketCoreStore,
   resetRegistrationTicketCoreStoreForTests,
 } from './registration_ticket_core_store';
 import type {
-  Event,
   EventCategory,
   EventCharacteristic,
   Registration,
@@ -13,14 +17,6 @@ import type {
 } from './domain_foundation';
 
 export type EventPricingMode = 'free' | 'paid';
-
-export type EventRecord = Event & {
-  slug: string;
-  summary: string;
-  description: string;
-  priceMinor: number;
-  currency: string;
-};
 
 export type RegistrationRecord = Registration & {
   checkoutOrderId: string | null;
@@ -84,71 +80,19 @@ const defaultCharacteristics: EventCharacteristic[] = [
   },
 ];
 
-export const DEFAULT_EVENT_CATALOG: EventRecord[] = [
-  {
-    id: 'evt_7f1ed0d65b3d7b6b18dc1001',
-    slug: 'open-studio-day',
-    venueId: 'ven_mix7_main',
-    title: 'Open Studio Day',
-    summary: 'Free daytime access to the space for community visitors.',
-    description:
-      'An open daytime format with community access, public program context, and immediate ticket issuance.',
-    status: 'published',
-    startsAt: '2026-04-20T10:00:00.000Z',
-    endsAt: '2026-04-20T16:00:00.000Z',
-    categoryRef: 'ecat_workshop',
-    characteristicRefs: ['echar_daytime', 'echar_members_friendly'],
-    visibility: 'public',
-    metadata: {},
-    priceMinor: 0,
-    currency: 'RUB',
-  },
-  {
-    id: 'evt_1f660cdf31de258568b11002',
-    slug: 'night-listening-session',
-    venueId: 'ven_mix7_main',
-    title: 'Night Listening Session',
-    summary: 'Paid evening event with explicit checkout handoff.',
-    description:
-      'A paid evening program that requires registration first and checkout as the commercial branch.',
-    status: 'published',
-    startsAt: '2026-04-25T20:00:00.000Z',
-    endsAt: '2026-04-25T23:30:00.000Z',
-    categoryRef: 'ecat_music',
-    characteristicRefs: ['echar_evening'],
-    visibility: 'public',
-    metadata: {},
-    priceMinor: 2500,
-    currency: 'RUB',
-  },
-];
-
 const categories = new Map<string, EventCategory>();
 const characteristics = new Map<string, EventCharacteristic>();
-const eventsById = new Map<string, EventRecord>();
-const eventsBySlug = new Map<string, EventRecord>();
 
-function seedDefaults() {
-  categories.clear();
-  characteristics.clear();
-  eventsById.clear();
-  eventsBySlug.clear();
-
-  for (const category of defaultCategories) {
-    categories.set(category.id, category);
-  }
-  for (const characteristic of defaultCharacteristics) {
-    characteristics.set(characteristic.id, characteristic);
-  }
-  for (const event of DEFAULT_EVENT_CATALOG) {
-    eventsById.set(event.id, event);
-    eventsBySlug.set(event.slug, event);
-  }
+for (const category of defaultCategories) {
+  categories.set(category.id, category);
+}
+for (const characteristic of defaultCharacteristics) {
+  characteristics.set(characteristic.id, characteristic);
 }
 
 export function resetEventRegistrationTicketStore() {
   resetRegistrationTicketCoreStoreForTests();
-  seedDefaults();
+  resetEventAdminStoreForTests();
 }
 
 resetEventRegistrationTicketStore();
@@ -230,6 +174,7 @@ async function createIssuedTicket(args: {
   orderId: string | null;
 }) {
   const occupiedCodes = await registrationTicketCoreStore.listTicketAccessCodesByEvent(args.eventId);
+  const event = await eventAdminStore.getEventById(args.eventId);
 
   return {
     id: args.ticketId,
@@ -239,8 +184,8 @@ async function createIssuedTicket(args: {
     orderId: args.orderId,
     status: 'issued' as const,
     accessClass: 'general' as const,
-    validFrom: eventsById.get(args.eventId)?.startsAt ?? null,
-    validTo: eventsById.get(args.eventId)?.endsAt ?? null,
+    validFrom: event?.startsAt ?? null,
+    validTo: event?.endsAt ?? null,
     accessCode: buildTicketAccessCode({
       actorId: args.actorId,
       eventId: args.eventId,
@@ -250,10 +195,6 @@ async function createIssuedTicket(args: {
     barcodeRef: buildTicketBarcodeRef(args.ticketId),
     qrPayload: buildTicketQrPayload(args.ticketId),
   };
-}
-
-function findEventBySlug(slug: string) {
-  return eventsBySlug.get(slug) ?? null;
 }
 
 function findCategory(categoryId: string | null) {
@@ -271,6 +212,14 @@ function eventPricingMode(event: EventRecord): EventPricingMode {
 }
 
 function ensureEventRegistrable(event: EventRecord) {
+  if (event.archivedAt) {
+    throw new EventRegistrationTicketError(
+      'EVENT_NOT_FOUND',
+      'Event not found.',
+      404,
+    );
+  }
+
   if (event.status !== 'published') {
     throw new EventRegistrationTicketError(
       'EVENT_NOT_REGISTRABLE',
@@ -278,11 +227,20 @@ function ensureEventRegistrable(event: EventRecord) {
       409,
     );
   }
+
+  if (!event.salesOpen) {
+    throw new EventRegistrationTicketError(
+      'EVENT_SALES_CLOSED',
+      'Event sales are closed.',
+      409,
+    );
+  }
 }
 
-export function listPublicEvents() {
-  return Array.from(eventsBySlug.values())
-    .filter((event) => event.status === 'published')
+export async function listPublicEvents() {
+  const events = await eventAdminStore.listPublicEvents();
+
+  return events
     .sort((left, right) => left.startsAt.localeCompare(right.startsAt))
     .map((event) => ({
       id: event.id,
@@ -302,9 +260,9 @@ export function listPublicEvents() {
     }));
 }
 
-export function getPublicEventDetail(slug: string) {
-  const event = findEventBySlug(slug);
-  if (!event || event.status !== 'published') {
+export async function getPublicEventDetail(slug: string) {
+  const event = await eventAdminStore.getPublicEventBySlug(slug);
+  if (!event) {
     throw new EventRegistrationTicketError(
       'EVENT_NOT_FOUND',
       'Event not found.',
@@ -344,7 +302,7 @@ export async function createEventRegistration(args: {
   now?: Date;
 }) {
   const now = args.now ?? new Date();
-  const event = findEventBySlug(args.eventSlug);
+  const event = await eventAdminStore.getEventBySlug(args.eventSlug);
 
   if (!event) {
     throw new EventRegistrationTicketError(
@@ -469,7 +427,7 @@ export async function issuePaidTicketForSuccessfulOrder(args: {
     );
   }
 
-  const event = eventsById.get(args.eventId);
+  const event = await eventAdminStore.getEventById(args.eventId);
   if (!event) {
     throw new EventRegistrationTicketError(
       'EVENT_NOT_FOUND',
@@ -569,7 +527,7 @@ export async function getOwnedTicket(args: {
     );
   }
 
-  const event = eventsById.get(ticket.eventId);
+  const event = await eventAdminStore.getEventById(ticket.eventId);
   if (!event) {
     throw new EventRegistrationTicketError(
       'TICKET_EVENT_NOT_FOUND',
@@ -601,36 +559,38 @@ export async function getOwnedTicket(args: {
 
 export async function listOwnedTickets(args: { actorId: string }) {
   const tickets = await registrationTicketCoreStore.listTicketsByActor(args.actorId);
-  return tickets
-    .map((ticket) => {
-      const event = eventsById.get(ticket.eventId);
-      if (!event) {
-        throw new EventRegistrationTicketError(
-          'TICKET_EVENT_NOT_FOUND',
-          'Ticket event not found.',
-          500,
-        );
-      }
+  return (
+    await Promise.all(
+      tickets.map(async (ticket) => {
+        const event = await eventAdminStore.getEventById(ticket.eventId);
+        if (!event) {
+          throw new EventRegistrationTicketError(
+            'TICKET_EVENT_NOT_FOUND',
+            'Ticket event not found.',
+            500,
+          );
+        }
 
-      return {
-        id: ticket.id,
-        status: ticket.status,
-        accessClass: ticket.accessClass,
-        validFrom: ticket.validFrom,
-        validTo: ticket.validTo,
-        accessCode: ticket.accessCode,
-        barcodeRef: ticket.barcodeRef,
-        qrPayload: ticket.qrPayload,
-        event: {
-          id: event.id,
-          slug: event.slug,
-          title: event.title,
-          startsAt: event.startsAt,
-          endsAt: event.endsAt,
-        },
-        registrationId: ticket.registrationId,
-        orderId: ticket.orderId,
-      };
-    })
-    .sort((left, right) => left.event.startsAt.localeCompare(right.event.startsAt));
+        return {
+          id: ticket.id,
+          status: ticket.status,
+          accessClass: ticket.accessClass,
+          validFrom: ticket.validFrom,
+          validTo: ticket.validTo,
+          accessCode: ticket.accessCode,
+          barcodeRef: ticket.barcodeRef,
+          qrPayload: ticket.qrPayload,
+          event: {
+            id: event.id,
+            slug: event.slug,
+            title: event.title,
+            startsAt: event.startsAt,
+            endsAt: event.endsAt,
+          },
+          registrationId: ticket.registrationId,
+          orderId: ticket.orderId,
+        };
+      }),
+    )
+  ).sort((left, right) => left.event.startsAt.localeCompare(right.event.startsAt));
 }

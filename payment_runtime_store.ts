@@ -1,4 +1,5 @@
 import { hashRequest } from './test_stubs/idempotency';
+import { eventAdminStore } from './event_admin_store';
 import { issuePaidTicketForSuccessfulOrder } from './event_registration_ticket_store';
 import {
   paymentCoreStore,
@@ -70,6 +71,52 @@ function now() {
   return new Date();
 }
 
+async function ensureEventAllowsNewOrder(eventId: string) {
+  const event = await eventAdminStore.getEventById(eventId);
+  if (!event) {
+    return;
+  }
+
+  if (event.archivedAt) {
+    throw new CheckoutOrderSourceError(
+      'EVENT_NOT_AVAILABLE',
+      'Event is not available.',
+      409,
+    );
+  }
+
+  if (!event.salesOpen) {
+    throw new CheckoutOrderSourceError(
+      'EVENT_SALES_CLOSED',
+      'Event sales are closed.',
+      409,
+    );
+  }
+}
+
+async function ensureEventAllowsPaymentStart(eventId: string) {
+  const event = await eventAdminStore.getEventById(eventId);
+  if (!event) {
+    return;
+  }
+
+  if (event.archivedAt) {
+    throw new CheckoutPaymentIntentDomainError(
+      'EVENT_NOT_AVAILABLE',
+      'Event is not available.',
+      409,
+    );
+  }
+
+  if (!event.salesOpen) {
+    throw new CheckoutPaymentIntentDomainError(
+      'EVENT_SALES_CLOSED',
+      'Event sales are closed.',
+      409,
+    );
+  }
+}
+
 export function resetPaymentRuntimeStore() {
   resetPaymentCoreStoreForTests();
   idempotency.clear();
@@ -104,6 +151,8 @@ export async function seedRuntimeOrder(order: {
 export async function createRuntimeOrder(
   input: CreateRuntimeOrderInput,
 ): Promise<RuntimeOrderRecord> {
+  await ensureEventAllowsNewOrder(input.eventId);
+
   const existing = await paymentCoreStore.loadOrder(input.id, input.buyerId);
   if (existing) {
     throw new CheckoutOrderSourceError(
@@ -222,6 +271,8 @@ export async function runtimeInitiatePaymentIntent(
     loadOrderForPayment: async (orderId, buyerId) =>
       paymentCoreStore.loadOrder(orderId, buyerId),
     bindPaymentProvider: async (order, provider) => {
+      await ensureEventAllowsPaymentStart(order.eventId);
+
       if (order.paymentProvider && order.paymentProvider !== provider) {
         throw new CheckoutPaymentIntentDomainError(
           'PAYMENT_PROVIDER_MISMATCH',

@@ -22,7 +22,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     data: {
-      events: listPublicEvents(),
+      events: await listPublicEvents(),
     },
   });
 }
@@ -31,7 +31,7 @@ export async function GET_BY_SLUG(_request: Request, slug: string) {
   try {
     return NextResponse.json({
       ok: true,
-      data: getPublicEventDetail(slug),
+      data: await getPublicEventDetail(slug),
     });
   } catch (error) {
     if (error instanceof EventRegistrationTicketError) {

@@ -5,6 +5,15 @@ declare const process: any;
 const http = require('node:http');
 
 import { BACKEND_RUNTIME_CONFIG } from './backend_runtime_config';
+import { GET as getAdminAuditLog } from './admin_audit_route';
+import {
+  GET as getAdminEvents,
+  PATCH_BY_ID as patchAdminEventById,
+  POST as postAdminEvents,
+  POST_ARCHIVE as postAdminEventArchive,
+  POST_CLOSE_SALES as postAdminEventCloseSales,
+  POST_OPEN_SALES as postAdminEventOpenSales,
+} from './admin_events_route';
 import { GET as getHealth } from './health_route';
 import { GET as getDebugSessionContext } from './debug_session_context_route';
 import { POST as postCheckoutOrder } from './checkout_order_route';
@@ -34,7 +43,7 @@ function buildCorsHeaders(origin: string | null): Record<string, string> {
 
   return {
     'access-control-allow-origin': origin,
-    'access-control-allow-methods': 'GET,POST,OPTIONS',
+    'access-control-allow-methods': 'GET,POST,PATCH,OPTIONS',
     'access-control-allow-headers': 'Content-Type,x-session-id,Idempotency-Key',
     'access-control-max-age': '600',
     vary: 'Origin',
@@ -58,6 +67,15 @@ function routeRequest(method: string, pathname: string): RouteHandler | null {
   }
   if (method === 'POST' && pathname === '/session/issue') {
     return postSessionIssue;
+  }
+  if (method === 'GET' && pathname === '/admin/events') {
+    return getAdminEvents;
+  }
+  if (method === 'POST' && pathname === '/admin/events') {
+    return postAdminEvents;
+  }
+  if (method === 'GET' && pathname === '/admin/audit-log') {
+    return getAdminAuditLog;
   }
   if (method === 'POST' && pathname === '/webhooks/yookassa') {
     return postYookassaWebhook;
@@ -119,6 +137,48 @@ function routeRequest(method: string, pathname: string): RouteHandler | null {
     const ticketId = pathname.slice('/tickets/'.length).trim();
     if (ticketId) {
       return async (request) => getTicketById(request, ticketId);
+    }
+  }
+  if (
+    pathname.startsWith('/admin/events/') &&
+    pathname.endsWith('/open-sales') &&
+    method === 'POST'
+  ) {
+    const eventId = pathname
+      .slice('/admin/events/'.length, -'/open-sales'.length)
+      .trim();
+    if (eventId) {
+      return async (request) => postAdminEventOpenSales(request, eventId);
+    }
+  }
+  if (
+    pathname.startsWith('/admin/events/') &&
+    pathname.endsWith('/close-sales') &&
+    method === 'POST'
+  ) {
+    const eventId = pathname
+      .slice('/admin/events/'.length, -'/close-sales'.length)
+      .trim();
+    if (eventId) {
+      return async (request) => postAdminEventCloseSales(request, eventId);
+    }
+  }
+  if (
+    pathname.startsWith('/admin/events/') &&
+    pathname.endsWith('/archive') &&
+    method === 'POST'
+  ) {
+    const eventId = pathname
+      .slice('/admin/events/'.length, -'/archive'.length)
+      .trim();
+    if (eventId) {
+      return async (request) => postAdminEventArchive(request, eventId);
+    }
+  }
+  if (method === 'PATCH' && pathname.startsWith('/admin/events/')) {
+    const eventId = pathname.slice('/admin/events/'.length).trim();
+    if (eventId && !eventId.includes('/')) {
+      return async (request) => patchAdminEventById(request, eventId);
     }
   }
 

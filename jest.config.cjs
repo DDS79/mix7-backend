@@ -17,6 +17,7 @@ module.exports = {
     '<rootDir>/payment_operations.test.ts',
     '<rootDir>/product_domain_anchors.test.ts',
     '<rootDir>/events_route.test.ts',
+    '<rootDir>/admin_events_route.test.ts',
     '<rootDir>/registrations_route.test.ts',
     '<rootDir>/tickets_route.test.ts',
     '<rootDir>/product_actor_auth_profile.test.ts',
