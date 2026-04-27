@@ -132,6 +132,10 @@ function summarizeAuditChanges(entry: AdminAuditLogRecord) {
     }));
 }
 
+function shouldShowAuditDiff(action: AdminAuditLogRecord['action']) {
+  return action === 'EVENT_UPDATED';
+}
+
 function getAuditActionLabel(action: AdminAuditLogRecord['action']) {
   switch (action) {
     case 'EVENT_CREATED':
@@ -840,6 +844,7 @@ export default function AdminPage() {
             <div className="stack">
               {auditLog.map((entry) => {
                 const changes = summarizeAuditChanges(entry);
+                const showDiff = shouldShowAuditDiff(entry.action) && changes.length > 0;
 
                 return (
                   <Card key={entry.id} className="admin-audit-entry">
@@ -853,7 +858,7 @@ export default function AdminPage() {
                         <span>Сущность: {entry.entityId}</span>
                         <span>Администратор: {entry.actorId}</span>
                       </div>
-                      {changes.length > 0 ? (
+                      {showDiff ? (
                         <div className="stack admin-change-list">
                           <strong>Изменения</strong>
                           {changes.map((change) => (
