@@ -48,5 +48,5 @@ export function getRemainingCapacityLabel(
     return null;
   }
 
-  return `Осталось ${remainingCapacity} мест`;
+  return `Осталось мест: ${remainingCapacity}`;
 }
