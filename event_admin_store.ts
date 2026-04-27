@@ -19,7 +19,8 @@ export type AdminAuditAction =
   | 'EVENT_UPDATED'
   | 'EVENT_SALES_OPENED'
   | 'EVENT_SALES_CLOSED'
-  | 'EVENT_ARCHIVED';
+  | 'EVENT_ARCHIVED'
+  | 'EVENT_UNARCHIVED';
 
 export type AdminAuditLogRecord = {
   id: string;
@@ -158,6 +159,7 @@ type EventAdminStore = {
     salesOpen: boolean;
   }) => Promise<EventRecord>;
   archiveEvent: (args: { actorId: string; eventId: string }) => Promise<EventRecord>;
+  unarchiveEvent: (args: { actorId: string; eventId: string }) => Promise<EventRecord>;
   listAuditLogs: (args?: { entityId?: string }) => Promise<AdminAuditLogRecord[]>;
 };
 
@@ -379,12 +381,22 @@ function createMemoryEventAdminStore(): EventAdminStore & { resetForTests: () =>
     listPublicEvents: async () =>
       sortEvents(
         Array.from(eventsById.values())
-          .filter((event) => event.status === 'published' && !event.archivedAt)
+          .filter(
+            (event) =>
+              event.status === 'published' &&
+              event.visibility === 'public' &&
+              !event.archivedAt,
+          )
           .map(cloneEvent),
       ),
     getPublicEventBySlug: async (slug) => {
       const event = eventsBySlug.get(normalizeSlug(slug)) ?? null;
-      if (!event || event.archivedAt || event.status !== 'published') {
+      if (
+        !event ||
+        event.archivedAt ||
+        event.status !== 'published' ||
+        event.visibility !== 'public'
+      ) {
         return null;
       }
       return cloneEvent(event);
@@ -505,6 +517,34 @@ function createMemoryEventAdminStore(): EventAdminStore & { resetForTests: () =>
       auditLogs.set(audit.id, audit);
       return cloneEvent(updated);
     },
+    unarchiveEvent: async ({ actorId, eventId }) => {
+      const existing = eventsById.get(eventId);
+      if (!existing) {
+        throw new EventAdminError('EVENT_NOT_FOUND', 'Event not found.', 404);
+      }
+      if (!existing.archivedAt) {
+        return cloneEvent(existing);
+      }
+
+      const nowIso = new Date().toISOString();
+      const updated: EventRecord = {
+        ...existing,
+        archivedAt: null,
+        updatedAt: nowIso,
+      };
+      setEvent(updated);
+
+      const audit = buildAuditRecord({
+        actorId,
+        action: 'EVENT_UNARCHIVED',
+        entityId: updated.id,
+        beforeJson: eventSnapshot(existing),
+        afterJson: eventSnapshot(updated),
+        createdAt: nowIso,
+      });
+      auditLogs.set(audit.id, audit);
+      return cloneEvent(updated);
+    },
     listAuditLogs: async (args) =>
       sortAudit(
         Array.from(auditLogs.values())
@@ -558,14 +598,14 @@ function createPostgresEventAdminStore(): EventAdminStore {
   return {
     listPublicEvents: async () => {
       const result = await dbQuery<EventRow>(
-        `${selectEventSql(`WHERE status = 'published' AND archived_at IS NULL`)}
+        `${selectEventSql(`WHERE status = 'published' AND visibility = 'public' AND archived_at IS NULL`)}
          ORDER BY starts_at ASC`,
       );
       return result.rows.map(mapEventRow);
     },
     getPublicEventBySlug: async (slug) => {
       const result = await dbQuery<EventRow>(
-        `${selectEventSql(`WHERE slug = $1 AND status = 'published' AND archived_at IS NULL`)}`,
+        `${selectEventSql(`WHERE slug = $1 AND status = 'published' AND visibility = 'public' AND archived_at IS NULL`)}`,
         [normalizeSlug(slug)],
       );
       return result.rows[0] ? mapEventRow(result.rows[0]) : null;
@@ -826,6 +866,60 @@ function createPostgresEventAdminStore(): EventAdminStore {
         const audit = buildAuditRecord({
           actorId,
           action: 'EVENT_ARCHIVED',
+          entityId: updated.id,
+          beforeJson: eventSnapshot(existing),
+          afterJson: eventSnapshot(updated),
+          createdAt: nowIso,
+        });
+        await client.query(
+          `INSERT INTO admin_audit_log (
+             id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
+           )
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::timestamptz)`,
+          [
+            audit.id,
+            audit.actorId,
+            audit.action,
+            audit.entityType,
+            audit.entityId,
+            JSON.stringify(audit.beforeJson),
+            JSON.stringify(audit.afterJson),
+            audit.createdAt,
+          ],
+        );
+
+        return updated;
+      }),
+    unarchiveEvent: async ({ actorId, eventId }) =>
+      withDbTransaction(async (client) => {
+        const existingResult = await client.query<EventRow>(selectEventSql('WHERE id = $1'), [
+          eventId,
+        ]);
+        const existing = existingResult.rows[0] ? mapEventRow(existingResult.rows[0]) : null;
+        if (!existing) {
+          throw new EventAdminError('EVENT_NOT_FOUND', 'Event not found.', 404);
+        }
+        if (!existing.archivedAt) {
+          return existing;
+        }
+
+        const nowIso = new Date().toISOString();
+        const updated: EventRecord = {
+          ...existing,
+          archivedAt: null,
+          updatedAt: nowIso,
+        };
+        await client.query(
+          `UPDATE events
+           SET archived_at = NULL,
+               updated_at = $2::timestamptz
+           WHERE id = $1`,
+          [eventId, nowIso],
+        );
+
+        const audit = buildAuditRecord({
+          actorId,
+          action: 'EVENT_UNARCHIVED',
           entityId: updated.id,
           beforeJson: eventSnapshot(existing),
           afterJson: eventSnapshot(updated),

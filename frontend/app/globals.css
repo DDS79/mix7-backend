@@ -252,6 +252,12 @@ a {
   color: var(--accent-2);
 }
 
+.admin-change-list {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(47, 108, 97, 0.08);
+}
+
 .admin-json-block {
   margin: 8px 0 0;
   padding: 12px;

@@ -30,7 +30,8 @@ export type AdminAuditLogRecord = {
     | 'EVENT_UPDATED'
     | 'EVENT_SALES_OPENED'
     | 'EVENT_SALES_CLOSED'
-    | 'EVENT_ARCHIVED';
+    | 'EVENT_ARCHIVED'
+    | 'EVENT_UNARCHIVED';
   entityType: string;
   entityId: string;
   beforeJson: Record<string, unknown> | null;
@@ -140,6 +141,16 @@ export async function closeAdminEventSales(args: { sessionId: string; eventId: s
 export async function archiveAdminEvent(args: { sessionId: string; eventId: string }) {
   const response = await apiRequest<AdminEventMutationResponse>({
     path: `/admin/events/${args.eventId}/archive`,
+    method: 'POST',
+    sessionId: args.sessionId,
+  });
+
+  return response.data.event;
+}
+
+export async function unarchiveAdminEvent(args: { sessionId: string; eventId: string }) {
+  const response = await apiRequest<AdminEventMutationResponse>({
+    path: `/admin/events/${args.eventId}/unarchive`,
     method: 'POST',
     sessionId: args.sessionId,
   });

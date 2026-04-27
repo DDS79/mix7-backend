@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { getEvents } from '@/features/events/api/events.api';
+import { getEventSalesLabel } from '@/shared/lib/eventLabels';
 import { routes } from '@/shared/constants/routes';
 import { Badge } from '@/shared/ui/Badge';
 import { Card } from '@/shared/ui/Card';
@@ -38,7 +39,7 @@ export default async function EventsPage() {
               </div>
               <div className="meta-list">
                 <span>{new Date(event.startsAt).toLocaleString()}</span>
-                <span>{event.visibility}</span>
+                <span>{getEventSalesLabel(event.sales.open)}</span>
               </div>
               <div className="row" style={{ justifyContent: 'flex-start', flexWrap: 'wrap' }}>
                 <EventListPrimaryAction event={event} />

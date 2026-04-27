@@ -252,12 +252,15 @@ export async function listPublicEvents() {
       visibility: event.visibility,
       category: findCategory(event.categoryRef),
       characteristicRefs: event.characteristicRefs,
-      pricing: {
-        mode: eventPricingMode(event),
-        priceMinor: event.priceMinor,
-        currency: event.currency,
-      },
-    }));
+    pricing: {
+      mode: eventPricingMode(event),
+      priceMinor: event.priceMinor,
+      currency: event.currency,
+    },
+    sales: {
+      open: event.salesOpen,
+    },
+  }));
 }
 
 export async function getPublicEventDetail(slug: string) {
@@ -290,6 +293,7 @@ export async function getPublicEventDetail(slug: string) {
     registration: {
       required: true,
       freeEvent: event.priceMinor === 0,
+      salesOpen: event.salesOpen,
     },
     metadata: event.metadata,
   };

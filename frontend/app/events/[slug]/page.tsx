@@ -1,5 +1,8 @@
 import { getEventDetail } from '@/features/events/api/events.api';
-import { routes } from '@/shared/constants/routes';
+import {
+  getEventSalesLabel,
+  getEventVisibilityLabel,
+} from '@/shared/lib/eventLabels';
 import { Badge } from '@/shared/ui/Badge';
 import { Card } from '@/shared/ui/Card';
 import { ErrorState } from '@/shared/ui/ErrorState';
@@ -20,26 +23,30 @@ export default async function EventDetailPage(props: {
             <div className="row">
               <Badge tone={event.pricing.mode === 'free' ? 'success' : 'warning'}>
                 {event.pricing.mode === 'free'
-                  ? 'Free event'
+                  ? 'Бесплатное событие'
                   : `${event.pricing.priceMinor} ${event.pricing.currency}`}
               </Badge>
-              <span className="subtle">{event.category?.title ?? 'Event'}</span>
+              <span className="subtle">{event.category?.title ?? 'Событие'}</span>
             </div>
             <div>
               <h2>{event.title}</h2>
               <p>{event.description}</p>
             </div>
             <div className="meta-list">
-              <span>Starts: {new Date(event.startsAt).toLocaleString()}</span>
-              <span>Ends: {new Date(event.endsAt).toLocaleString()}</span>
-              <span>Visibility: {event.visibility}</span>
+              <span>Начало: {new Date(event.startsAt).toLocaleString('ru-RU')}</span>
+              <span>Конец: {new Date(event.endsAt).toLocaleString('ru-RU')}</span>
+              <span>Формат доступа: {getEventVisibilityLabel(event.visibility)}</span>
+              <span>{getEventSalesLabel(event.registration.salesOpen)}</span>
             </div>
             <div className="row" style={{ justifyContent: 'flex-start', flexWrap: 'wrap' }}>
               {event.characteristics.map((characteristic) => (
                 <Badge key={characteristic.id}>{characteristic.key}</Badge>
               ))}
             </div>
-            <EventDetailPrimaryAction eventSlug={event.slug} />
+            {!event.registration.salesOpen ? (
+              <p className="subtle">Продажа билетов приостановлена. Уже купленные билеты остаются действительными.</p>
+            ) : null}
+            <EventDetailPrimaryAction event={event} />
           </div>
         </Card>
       </div>

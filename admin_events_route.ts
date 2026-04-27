@@ -194,6 +194,28 @@ export async function POST_ARCHIVE(request: Request, eventId: string) {
           data: {
             event,
           },
+      }),
+    });
+  } catch (error) {
+    return adminErrorResponse(error);
+  }
+}
+
+export async function POST_UNARCHIVE(request: Request, eventId: string) {
+  try {
+    return await withAdminActorContext({
+      request,
+      handler: async (context) =>
+        await eventAdminStore.unarchiveEvent({
+          actorId: context.actor.id,
+          eventId,
+        }),
+      toResponse: (event) =>
+        NextResponse.json({
+          ok: true,
+          data: {
+            event,
+          },
         }),
     });
   } catch (error) {

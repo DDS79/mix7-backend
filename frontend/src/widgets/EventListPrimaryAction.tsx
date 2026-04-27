@@ -4,6 +4,7 @@ import Link from 'next/link';
 
 import type { EventListItem } from '@/features/events/api/events.api';
 import { useOwnedEventTicket } from '@/features/tickets/hooks/useOwnedEventTicket';
+import { getEventSalesLabel } from '@/shared/lib/eventLabels';
 import { routes } from '@/shared/constants/routes';
 import { Button } from '@/shared/ui/Button';
 
@@ -22,9 +23,13 @@ export function EventListPrimaryAction(props: { event: EventListItem }) {
     return <Button disabled>Проверяем билет…</Button>;
   }
 
+  if (!props.event.sales.open) {
+    return <Button disabled>{getEventSalesLabel(false)}</Button>;
+  }
+
   return (
     <Link className="button button-primary" href={routes.eventRegister(props.event.slug)}>
-      {props.event.pricing.mode === 'free' ? 'Register' : 'Buy ticket'}
+      {props.event.pricing.mode === 'free' ? 'Зарегистрироваться' : 'Купить билет'}
     </Link>
   );
 }

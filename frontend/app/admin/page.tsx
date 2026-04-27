@@ -10,6 +10,7 @@ import {
   listAdminAuditLog,
   listAdminEvents,
   openAdminEventSales,
+  unarchiveAdminEvent,
   updateAdminEvent,
   type AdminAuditLogRecord,
   type AdminEventRecord,
@@ -19,6 +20,12 @@ import { ApiError } from '@/entities/api-error/model/apiError.types';
 import { useRuntimeSessionState } from '@/entities/session/hooks/useRuntimeSessionState';
 import { readSessionState } from '@/entities/session/lib/sessionStorage';
 import { routes } from '@/shared/constants/routes';
+import {
+  getArchivedLabel,
+  getEventSalesLabel,
+  getEventStatusLabel,
+  getEventVisibilityLabel,
+} from '@/shared/lib/eventLabels';
 import { Badge } from '@/shared/ui/Badge';
 import { Button } from '@/shared/ui/Button';
 import { Card } from '@/shared/ui/Card';
@@ -96,6 +103,50 @@ function toIsoFromDateTimeLocal(value: string) {
 
 function formatPrice(event: AdminEventRecord) {
   return `${event.priceMinor} ${event.currency}`;
+}
+
+function formatAuditValue(value: unknown) {
+  if (value === null) {
+    return 'null';
+  }
+  if (value === undefined) {
+    return '—';
+  }
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+function summarizeAuditChanges(entry: AdminAuditLogRecord) {
+  const before = entry.beforeJson ?? {};
+  const after = entry.afterJson ?? {};
+  const keys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
+
+  return keys
+    .filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]))
+    .map((key) => ({
+      key,
+      before: formatAuditValue(before[key]),
+      after: formatAuditValue(after[key]),
+    }));
+}
+
+function getAuditActionLabel(action: AdminAuditLogRecord['action']) {
+  switch (action) {
+    case 'EVENT_CREATED':
+      return 'Событие создано';
+    case 'EVENT_UPDATED':
+      return 'Событие обновлено';
+    case 'EVENT_SALES_OPENED':
+      return 'Продажи открыты';
+    case 'EVENT_SALES_CLOSED':
+      return 'Продажи закрыты';
+    case 'EVENT_ARCHIVED':
+      return 'Событие отправлено в архив';
+    case 'EVENT_UNARCHIVED':
+      return 'Событие восстановлено';
+  }
 }
 
 function buildEditState(event: AdminEventRecord): EditFormState {
@@ -238,7 +289,10 @@ export default function AdminPage() {
     }
   }
 
-  async function handleEventMutation(eventId: string, action: 'open' | 'close' | 'archive') {
+  async function handleEventMutation(
+    eventId: string,
+    action: 'open' | 'close' | 'archive' | 'unarchive',
+  ) {
     const session = readSessionState() ?? runtimeSession;
     if (!isAuthenticatedSession(session)) {
       return;
@@ -256,6 +310,9 @@ export default function AdminPage() {
       }
       if (action === 'archive') {
         await archiveAdminEvent({ sessionId: session!.sessionId, eventId });
+      }
+      if (action === 'unarchive') {
+        await unarchiveAdminEvent({ sessionId: session!.sessionId, eventId });
       }
 
       await refreshAdminData();
@@ -371,7 +428,7 @@ export default function AdminPage() {
                 onChange={(event) =>
                   setCreateForm((current) => ({ ...current, title: event.target.value }))
                 }
-                placeholder="Night Session"
+                placeholder="Ночное событие"
               />
             </label>
 
@@ -387,7 +444,7 @@ export default function AdminPage() {
             </label>
 
             <label className="stack admin-field admin-field-wide">
-              <span>Summary</span>
+              <span>Краткое описание</span>
               <Input
                 value={createForm.summary}
                 onChange={(event) =>
@@ -398,7 +455,7 @@ export default function AdminPage() {
             </label>
 
             <label className="stack admin-field admin-field-wide">
-              <span>Description</span>
+              <span>Полное описание</span>
               <textarea
                 className="input input-textarea"
                 value={createForm.description}
@@ -444,7 +501,7 @@ export default function AdminPage() {
             </label>
 
             <label className="stack admin-field">
-              <span>Currency</span>
+              <span>Валюта</span>
               <Input
                 value={createForm.currency}
                 onChange={(event) =>
@@ -454,7 +511,7 @@ export default function AdminPage() {
             </label>
 
             <label className="stack admin-field">
-              <span>Status</span>
+              <span>Статус</span>
               <select
                 className="input"
                 value={createForm.status}
@@ -465,15 +522,15 @@ export default function AdminPage() {
                   }))
                 }
               >
-                <option value="published">published</option>
-                <option value="draft">draft</option>
-                <option value="cancelled">cancelled</option>
-                <option value="completed">completed</option>
+                <option value="published">{getEventStatusLabel('published')}</option>
+                <option value="draft">{getEventStatusLabel('draft')}</option>
+                <option value="cancelled">{getEventStatusLabel('cancelled')}</option>
+                <option value="completed">{getEventStatusLabel('completed')}</option>
               </select>
             </label>
 
             <label className="stack admin-field">
-              <span>Visibility</span>
+              <span>Видимость</span>
               <select
                 className="input"
                 value={createForm.visibility}
@@ -484,10 +541,8 @@ export default function AdminPage() {
                   }))
                 }
               >
-                <option value="public">public</option>
-                <option value="private">private</option>
-                <option value="members_only">members_only</option>
-                <option value="invite_only">invite_only</option>
+                <option value="public">{getEventVisibilityLabel('public')}</option>
+                <option value="private">{getEventVisibilityLabel('private')}</option>
               </select>
             </label>
           </div>
@@ -525,22 +580,23 @@ export default function AdminPage() {
                         </div>
                         <div className="row admin-badge-row">
                           <Badge tone={event.salesOpen ? 'success' : 'warning'}>
-                            {event.salesOpen ? 'sales open' : 'sales closed'}
+                            {getEventSalesLabel(event.salesOpen)}
                           </Badge>
                           <Badge tone={event.archivedAt ? 'warning' : 'success'}>
-                            {event.archivedAt ? 'archived' : event.status}
+                            {event.archivedAt ? getArchivedLabel() : getEventStatusLabel(event.status)}
                           </Badge>
                         </div>
                       </div>
 
                       <div className="meta-list">
-                        <span>Статус: {event.status}</span>
+                        <span>Статус: {getEventStatusLabel(event.status)}</span>
                         <span>Начало: {formatDisplayDate(event.startsAt)}</span>
                         <span>Конец: {formatDisplayDate(event.endsAt)}</span>
                         <span>Цена: {formatPrice(event)}</span>
-                        <span>Visibility: {event.visibility}</span>
+                        <span>Продажи: {getEventSalesLabel(event.salesOpen)}</span>
+                        <span>Видимость: {getEventVisibilityLabel(event.visibility)}</span>
                         {event.archivedAt ? (
-                          <span>Архивировано: {formatDisplayDate(event.archivedAt)}</span>
+                          <span>{getArchivedLabel()}: {formatDisplayDate(event.archivedAt)}</span>
                         ) : null}
                       </div>
 
@@ -565,6 +621,13 @@ export default function AdminPage() {
                           onClick={() => void handleEventMutation(event.id, 'archive')}
                         >
                           Архивировать
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          disabled={isMutating || event.archivedAt === null}
+                          onClick={() => void handleEventMutation(event.id, 'unarchive')}
+                        >
+                          Восстановить
                         </Button>
                         <Button
                           variant="secondary"
@@ -600,7 +663,7 @@ export default function AdminPage() {
                             </label>
 
                             <label className="stack admin-field admin-field-wide">
-                              <span>Summary</span>
+                              <span>Краткое описание</span>
                               <Input
                                 value={editForm.summary}
                                 onChange={(event) =>
@@ -612,7 +675,7 @@ export default function AdminPage() {
                             </label>
 
                             <label className="stack admin-field admin-field-wide">
-                              <span>Description</span>
+                              <span>Полное описание</span>
                               <textarea
                                 className="input input-textarea"
                                 value={editForm.description}
@@ -669,7 +732,7 @@ export default function AdminPage() {
                             </label>
 
                             <label className="stack admin-field">
-                              <span>Currency</span>
+                              <span>Валюта</span>
                               <Input
                                 value={editForm.currency}
                                 onChange={(event) =>
@@ -681,7 +744,7 @@ export default function AdminPage() {
                             </label>
 
                             <label className="stack admin-field">
-                              <span>Status</span>
+                              <span>Статус</span>
                               <select
                                 className="input"
                                 value={editForm.status}
@@ -696,15 +759,15 @@ export default function AdminPage() {
                                   )
                                 }
                               >
-                                <option value="published">published</option>
-                                <option value="draft">draft</option>
-                                <option value="cancelled">cancelled</option>
-                                <option value="completed">completed</option>
+                                <option value="published">{getEventStatusLabel('published')}</option>
+                                <option value="draft">{getEventStatusLabel('draft')}</option>
+                                <option value="cancelled">{getEventStatusLabel('cancelled')}</option>
+                                <option value="completed">{getEventStatusLabel('completed')}</option>
                               </select>
                             </label>
 
                             <label className="stack admin-field">
-                              <span>Visibility</span>
+                              <span>Видимость</span>
                               <select
                                 className="input"
                                 value={editForm.visibility}
@@ -719,10 +782,13 @@ export default function AdminPage() {
                                   )
                                 }
                               >
-                                <option value="public">public</option>
-                                <option value="private">private</option>
-                                <option value="members_only">members_only</option>
-                                <option value="invite_only">invite_only</option>
+                                {editForm.visibility !== 'public' && editForm.visibility !== 'private' ? (
+                                  <option value={editForm.visibility}>
+                                    {getEventVisibilityLabel(editForm.visibility)}
+                                  </option>
+                                ) : null}
+                                <option value="public">{getEventVisibilityLabel('public')}</option>
+                                <option value="private">{getEventVisibilityLabel('private')}</option>
                               </select>
                             </label>
                           </div>
@@ -747,7 +813,7 @@ export default function AdminPage() {
         <div className="stack">
           <div className="row admin-audit-toolbar">
             <div>
-              <h3>Audit log</h3>
+              <h3>Журнал действий</h3>
               <p className="subtle">Последние admin-действия по событиям.</p>
             </div>
 
@@ -772,36 +838,50 @@ export default function AdminPage() {
             <EmptyState title="Аудит пуст" message="Пока нет записей аудита для выбранного фильтра." />
           ) : (
             <div className="stack">
-              {auditLog.map((entry) => (
-                <Card key={entry.id} className="admin-audit-entry">
-                  <div className="stack">
-                    <div className="row admin-event-head">
-                      <strong>{entry.action}</strong>
-                      <span className="subtle">{formatDisplayDate(entry.createdAt)}</span>
+              {auditLog.map((entry) => {
+                const changes = summarizeAuditChanges(entry);
+
+                return (
+                  <Card key={entry.id} className="admin-audit-entry">
+                    <div className="stack">
+                      <div className="row admin-event-head">
+                        <strong>{getAuditActionLabel(entry.action)}</strong>
+                        <span className="subtle">{formatDisplayDate(entry.createdAt)}</span>
+                      </div>
+                      <div className="meta-list">
+                        <span>Тип сущности: {entry.entityType}</span>
+                        <span>Сущность: {entry.entityId}</span>
+                        <span>Администратор: {entry.actorId}</span>
+                      </div>
+                      {changes.length > 0 ? (
+                        <div className="stack admin-change-list">
+                          <strong>Изменения</strong>
+                          {changes.map((change) => (
+                            <span key={change.key} className="subtle">
+                              {change.key}: {change.before} → {change.after}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      {(entry.beforeJson || entry.afterJson) ? (
+                        <details className="admin-json-details">
+                          <summary>Показать raw before / after JSON</summary>
+                          <pre className="admin-json-block">
+                            {JSON.stringify(
+                              {
+                                before: entry.beforeJson,
+                                after: entry.afterJson,
+                              },
+                              null,
+                              2,
+                            )}
+                          </pre>
+                        </details>
+                      ) : null}
                     </div>
-                    <div className="meta-list">
-                      <span>entityType: {entry.entityType}</span>
-                      <span>entityId: {entry.entityId}</span>
-                      <span>actorId: {entry.actorId}</span>
-                    </div>
-                    {(entry.beforeJson || entry.afterJson) ? (
-                      <details className="admin-json-details">
-                        <summary>before / after JSON</summary>
-                        <pre className="admin-json-block">
-                          {JSON.stringify(
-                            {
-                              before: entry.beforeJson,
-                              after: entry.afterJson,
-                            },
-                            null,
-                            2,
-                          )}
-                        </pre>
-                      </details>
-                    ) : null}
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>

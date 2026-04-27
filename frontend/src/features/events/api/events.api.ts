@@ -7,7 +7,7 @@ export type EventListItem = {
   summary: string;
   startsAt: string;
   endsAt: string;
-  visibility: string;
+  visibility: 'public' | 'private' | 'members_only' | 'invite_only';
   category: {
     id: string;
     key: string;
@@ -20,6 +20,15 @@ export type EventListItem = {
     priceMinor: number;
     currency: string;
   };
+  sales: {
+    open: boolean;
+  };
+};
+
+type EventListItemWire = Omit<EventListItem, 'sales'> & {
+  sales?: {
+    open?: boolean;
+  };
 };
 
 export type EventDetail = {
@@ -30,7 +39,7 @@ export type EventDetail = {
   description: string;
   startsAt: string;
   endsAt: string;
-  visibility: string;
+  visibility: EventListItem['visibility'];
   venueId: string | null;
   category: EventListItem['category'];
   characteristics: Array<{
@@ -44,30 +53,58 @@ export type EventDetail = {
   registration: {
     required: boolean;
     freeEvent: boolean;
+    salesOpen: boolean;
   };
   metadata: Record<string, unknown>;
 };
+
+type EventDetailWire = Omit<EventDetail, 'registration'> & {
+  registration: {
+    required: boolean;
+    freeEvent: boolean;
+    salesOpen?: boolean;
+  };
+};
+
+function normalizeEventListItem(event: EventListItemWire): EventListItem {
+  return {
+    ...event,
+    sales: {
+      open: event.sales?.open ?? true,
+    },
+  };
+}
+
+function normalizeEventDetail(event: EventDetailWire): EventDetail {
+  return {
+    ...event,
+    registration: {
+      ...event.registration,
+      salesOpen: event.registration.salesOpen ?? true,
+    },
+  };
+}
 
 export async function getEvents() {
   const response = await apiRequest<{
     ok: true;
     data: {
-      events: EventListItem[];
+      events: EventListItemWire[];
     };
   }>({
     path: '/events',
   });
 
-  return response.data.events;
+  return response.data.events.map(normalizeEventListItem);
 }
 
 export async function getEventDetail(slug: string) {
   const response = await apiRequest<{
     ok: true;
-    data: EventDetail;
+    data: EventDetailWire;
   }>({
     path: `/events/${slug}`,
   });
 
-  return response.data;
+  return normalizeEventDetail(response.data);
 }

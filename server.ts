@@ -13,6 +13,7 @@ import {
   POST_ARCHIVE as postAdminEventArchive,
   POST_CLOSE_SALES as postAdminEventCloseSales,
   POST_OPEN_SALES as postAdminEventOpenSales,
+  POST_UNARCHIVE as postAdminEventUnarchive,
 } from './admin_events_route';
 import { GET as getHealth } from './health_route';
 import { GET as getDebugSessionContext } from './debug_session_context_route';
@@ -173,6 +174,18 @@ function routeRequest(method: string, pathname: string): RouteHandler | null {
       .trim();
     if (eventId) {
       return async (request) => postAdminEventArchive(request, eventId);
+    }
+  }
+  if (
+    pathname.startsWith('/admin/events/') &&
+    pathname.endsWith('/unarchive') &&
+    method === 'POST'
+  ) {
+    const eventId = pathname
+      .slice('/admin/events/'.length, -'/unarchive'.length)
+      .trim();
+    if (eventId) {
+      return async (request) => postAdminEventUnarchive(request, eventId);
     }
   }
   if (method === 'PATCH' && pathname.startsWith('/admin/events/')) {

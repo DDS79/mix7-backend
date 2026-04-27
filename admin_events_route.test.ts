@@ -140,7 +140,7 @@ describe('admin events routes', () => {
     expect(json.error.code).toBe('ADMIN_FORBIDDEN');
   });
 
-  it('creates, updates, closes sales, reopens sales, archives, and audits events', async () => {
+  it('creates, updates, closes sales, reopens sales, archives, restores, and audits events', async () => {
     const admin = await issueAdminSession();
 
     const created = await createAdminEvent(admin.data.sessionId);
@@ -243,6 +243,19 @@ describe('admin events routes', () => {
     expect(archiveResponse.status).toBe(200);
     expect(archiveJson.data.event.archivedAt).toEqual(expect.any(String));
 
+    const unarchiveResponse = await handleApiRequest(
+      new Request(`http://render.local/admin/events/${eventId}/unarchive`, {
+        method: 'POST',
+        headers: {
+          'x-session-id': admin.data.sessionId,
+        },
+      }),
+    );
+    const unarchiveJson = await unarchiveResponse.json();
+
+    expect(unarchiveResponse.status).toBe(200);
+    expect(unarchiveJson.data.event.archivedAt).toBeNull();
+
     const adminListResponse = await handleApiRequest(
       new Request('http://render.local/admin/events', {
         headers: {
@@ -257,7 +270,7 @@ describe('admin events routes', () => {
 
     expect(adminListResponse.status).toBe(200);
     expect(archivedEvent).toBeDefined();
-    expect(archivedEvent.archivedAt).toEqual(expect.any(String));
+    expect(archivedEvent.archivedAt).toBeNull();
 
     const publicListResponse = await handleApiRequest(
       new Request('http://render.local/events'),
@@ -266,15 +279,15 @@ describe('admin events routes', () => {
 
     expect(
       publicListJson.data.events.some((event: { id: string }) => event.id === eventId),
-    ).toBe(false);
+    ).toBe(true);
 
     const publicDetailResponse = await handleApiRequest(
       new Request('http://render.local/events/admin-test-event'),
     );
     const publicDetailJson = await publicDetailResponse.json();
 
-    expect(publicDetailResponse.status).toBe(404);
-    expect(publicDetailJson.error.code).toBe('EVENT_NOT_FOUND');
+    expect(publicDetailResponse.status).toBe(200);
+    expect(publicDetailJson.data.slug).toBe('admin-test-event');
 
     const auditResponse = await handleApiRequest(
       new Request(`http://render.local/admin/audit-log?eventId=${eventId}`, {
@@ -293,6 +306,7 @@ describe('admin events routes', () => {
       'EVENT_CREATED',
       'EVENT_SALES_CLOSED',
       'EVENT_SALES_OPENED',
+      'EVENT_UNARCHIVED',
       'EVENT_UPDATED',
     ]);
   });
