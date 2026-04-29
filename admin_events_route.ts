@@ -3,6 +3,26 @@ import { z } from 'zod';
 
 import { withAdminActorContext } from './admin_auth';
 import { eventAdminStore, EventAdminError } from './event_admin_store';
+import { registrationTicketCoreStore } from './registration_ticket_core_store';
+
+async function listAdminEventsWithCapacityMetrics() {
+  const events = await eventAdminStore.listAdminEvents();
+
+  return Promise.all(
+    events.map(async (event) => {
+      const occupiedCount = await registrationTicketCoreStore.countOccupiedTicketsByEvent(event.id);
+      const remainingCapacity =
+        event.capacity === null ? null : Math.max(event.capacity - occupiedCount, 0);
+
+      return {
+        ...event,
+        occupiedCount,
+        remainingCapacity,
+        soldOut: event.capacity === null ? false : remainingCapacity === 0,
+      };
+    }),
+  );
+}
 
 const eventPayloadSchema = z.object({
   slug: z
@@ -76,7 +96,7 @@ export async function GET(request: Request) {
     return await withAdminActorContext({
       request,
       handler: async () => ({
-        events: await eventAdminStore.listAdminEvents(),
+        events: await listAdminEventsWithCapacityMetrics(),
       }),
       toResponse: (value) =>
         NextResponse.json({

@@ -108,6 +108,17 @@ function formatPrice(event: AdminEventRecord) {
   return `${event.priceMinor} ${event.currency}`;
 }
 
+function getAdminCapacityMetrics(event: AdminEventRecord) {
+  if (event.capacity === null) {
+    return ['Лимит мест: без ограничений'];
+  }
+
+  return [
+    `Занято: ${event.occupiedCount} / ${event.capacity}`,
+    event.soldOut ? 'Мест нет' : `Осталось мест: ${event.remainingCapacity ?? 0}`,
+  ];
+}
+
 function formatAuditValue(value: unknown) {
   if (value === null) {
     return 'null';
@@ -615,10 +626,9 @@ export default function AdminPage() {
                         <span>Статус: {getEventStatusLabel(event.status)}</span>
                         <span>Начало: {formatDisplayDate(event.startsAt)}</span>
                         <span>Конец: {formatDisplayDate(event.endsAt)}</span>
-                        <span>
-                          Вместимость:{' '}
-                          {event.capacity === null ? 'Без лимита' : event.capacity}
-                        </span>
+                        {getAdminCapacityMetrics(event).map((line) => (
+                          <span key={`${event.id}-${line}`}>{line}</span>
+                        ))}
                         <span>Цена: {formatPrice(event)}</span>
                         <span>Продажи: {getEventSalesLabel(event.salesOpen)}</span>
                         <span>Видимость: {getEventVisibilityLabel(event.visibility)}</span>

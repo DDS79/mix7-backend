@@ -15,6 +15,9 @@ export type AdminEventRecord = {
   visibility: 'public' | 'private' | 'members_only' | 'invite_only';
   metadata: Record<string, unknown>;
   capacity: number | null;
+  occupiedCount: number;
+  remainingCapacity: number | null;
+  soldOut: boolean;
   priceMinor: number;
   currency: string;
   salesOpen: boolean;

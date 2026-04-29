@@ -366,4 +366,77 @@ describe('admin events routes', () => {
     expect(ticketJson.data.id).toBe(registrationJson.data.ticket.ticketId);
     expect(ticketJson.data.event.slug).toBe('open-studio-day');
   });
+
+  it('returns operator-facing capacity metrics in the admin event list', async () => {
+    const admin = await issueAdminSession();
+    const customer = await issueCustomerSession('44444444-4444-4444-8444-444444444444');
+
+    const limitedResponse = await handleApiRequest(
+      new Request('http://render.local/admin/events', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-session-id': admin.data.sessionId,
+        },
+        body: JSON.stringify({
+          slug: 'admin-capacity-event',
+          venueId: null,
+          title: 'Admin Capacity Event',
+          summary: 'Limited event',
+          description: 'Limited event',
+          status: 'published',
+          startsAt: '2026-06-15T18:00:00.000Z',
+          endsAt: '2026-06-15T20:00:00.000Z',
+          categoryRef: null,
+          characteristicRefs: [],
+          visibility: 'public',
+          metadata: {},
+          capacity: 1,
+          priceMinor: 0,
+          currency: 'RUB',
+        }),
+      }),
+    );
+    const limitedJson = await limitedResponse.json();
+
+    expect(limitedResponse.status).toBe(201);
+
+    const registrationResponse = await handleApiRequest(
+      new Request('http://render.local/registrations', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-session-id': customer.data.sessionId,
+        },
+        body: JSON.stringify({
+          eventSlug: 'admin-capacity-event',
+        }),
+      }),
+    );
+    expect(registrationResponse.status).toBe(201);
+
+    const adminListResponse = await handleApiRequest(
+      new Request('http://render.local/admin/events', {
+        headers: {
+          'x-session-id': admin.data.sessionId,
+        },
+      }),
+    );
+    const adminListJson = await adminListResponse.json();
+    const limitedEvent = adminListJson.data.events.find(
+      (event: { id: string }) => event.id === limitedJson.data.event.id,
+    );
+    const unlimitedEvent = adminListJson.data.events.find(
+      (event: { slug: string }) => event.slug === 'night-listening-session',
+    );
+
+    expect(adminListResponse.status).toBe(200);
+    expect(limitedEvent.capacity).toBe(1);
+    expect(limitedEvent.occupiedCount).toBe(1);
+    expect(limitedEvent.remainingCapacity).toBe(0);
+    expect(limitedEvent.soldOut).toBe(true);
+    expect(unlimitedEvent.capacity).toBeNull();
+    expect(unlimitedEvent.remainingCapacity).toBeNull();
+    expect(unlimitedEvent.soldOut).toBe(false);
+  });
 });
